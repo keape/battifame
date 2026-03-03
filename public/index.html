@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BattiFame — Nutrizione di coppia</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">🥗</span>
+        <span class="logo-text">BattiFame</span>
+      </div>
+      <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="piano">Piano Settimanale</button>
+        <button class="tab-btn" data-tab="ricettario">Ricettario</button>
+        <button class="tab-btn" data-tab="ingredienti">Ingredienti</button>
+        <button class="tab-btn" data-tab="spesa">Lista Spesa</button>
+        <button class="tab-btn" data-tab="impostazioni">Impostazioni</button>
+      </nav>
+      <button class="menu-btn" id="menuToggle" aria-label="Menu">☰</button>
+    </div>
+    <!-- Mobile nav -->
+    <nav class="mobile-nav" id="mobileNav">
+      <button class="tab-btn active" data-tab="piano">📅 Piano Settimanale</button>
+      <button class="tab-btn" data-tab="ricettario">📖 Ricettario</button>
+      <button class="tab-btn" data-tab="ingredienti">🥦 Ingredienti</button>
+      <button class="tab-btn" data-tab="spesa">🛒 Lista Spesa</button>
+      <button class="tab-btn" data-tab="impostazioni">⚙️ Impostazioni</button>
+    </nav>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main class="app-main">
+
+    <!-- TAB: PIANO SETTIMANALE -->
+    <section id="tab-piano" class="tab-content active">
+      <div class="section-header">
+        <div class="week-nav">
+          <button class="btn-icon" id="prevWeek" title="Settimana precedente">&#8592;</button>
+          <div class="week-label-wrap">
+            <h2 class="week-label" id="weekLabel">Caricamento...</h2>
+            <span class="week-sub" id="weekSub"></span>
+          </div>
+          <button class="btn-icon" id="nextWeek" title="Settimana successiva">&#8594;</button>
+        </div>
+        <div class="plan-actions">
+          <button class="btn btn-secondary" id="btnGeneraPiano">⚡ Genera piano</button>
+          <button class="btn btn-primary" id="btnConferma" disabled>✓ Conferma piano</button>
+        </div>
+      </div>
+
+      <div class="confirmed-banner" id="confirmedBanner" style="display:none">
+        ✅ Piano confermato! La lista spesa sarà inviata per email domenica sera.
+      </div>
+
+      <!-- Target giornalieri -->
+      <div class="targets-row">
+        <div class="target-chip">
+          <span class="target-icon">👨</span>
+          <span>Target: <strong>1635 kcal/giorno</strong> · 4 pasti</span>
+        </div>
+        <div class="target-chip">
+          <span class="target-icon">👩</span>
+          <span>Target: <strong>1686 kcal/giorno</strong> · 5 pasti</span>
+        </div>
+      </div>
+
+      <!-- Piano settimanale -->
+      <div class="week-grid" id="weekGrid">
+        <div class="loading-state">Caricamento piano...</div>
+      </div>
+    </section>
+
+    <!-- TAB: RICETTARIO -->
+    <section id="tab-ricettario" class="tab-content">
+      <div class="section-header">
+        <h2>Ricettario</h2>
+        <button class="btn btn-primary" id="btnNuovoPasto">+ Nuovo pasto</button>
+      </div>
+
+      <div class="category-tabs">
+        <button class="cat-btn active" data-cat="">Tutti</button>
+        <button class="cat-btn" data-cat="colazione">Colazione</button>
+        <button class="cat-btn" data-cat="spuntino">Spuntino</button>
+        <button class="cat-btn" data-cat="pranzo">Pranzo</button>
+        <button class="cat-btn" data-cat="merenda">Merenda</button>
+        <button class="cat-btn" data-cat="cena">Cena</button>
+      </div>
+
+      <div class="meals-grid" id="mealsGrid">
+        <div class="loading-state">Caricamento ricettario...</div>
+      </div>
+    </section>
+
+    <!-- TAB: INGREDIENTI -->
+    <section id="tab-ingredienti" class="tab-content">
+      <div class="section-header">
+        <h2>Ingredienti</h2>
+        <button class="btn btn-primary" id="btnNuovoIngrediente">+ Nuovo ingrediente</button>
+      </div>
+      <p class="tab-description">
+        Gestisci il database nutrizionale: aggiungi gli alimenti semplici (frutta, yogurt, noci, ecc.)
+        con i relativi valori per 100g. Vengono usati per il calcolo automatico delle calorie nelle ricette
+        e come riferimento per gli spuntini veloci.
+      </p>
+      <div class="ingredients-search">
+        <input type="text" id="ingredientSearch" placeholder="Cerca ingrediente..." class="search-input">
+      </div>
+      <div class="ingredients-grid" id="ingredientsGrid">
+        <div class="loading-state">Caricamento ingredienti...</div>
+      </div>
+    </section>
+
+    <!-- TAB: LISTA SPESA -->
+    <section id="tab-spesa" class="tab-content">
+      <div class="section-header">
+        <h2>Lista della Spesa</h2>
+        <div class="spesa-actions">
+          <select class="select-week" id="shoppingWeekSelect">
+            <option value="">Settimana prossima</option>
+          </select>
+          <button class="btn btn-secondary" id="btnStampa">🖨 Stampa</button>
+          <button class="btn btn-primary" id="btnInviaSpesa">📧 Invia per email</button>
+        </div>
+      </div>
+      <div class="shopping-list" id="shoppingList">
+        <div class="loading-state">Caricamento lista...</div>
+      </div>
+    </section>
+
+    <!-- TAB: IMPOSTAZIONI -->
+    <section id="tab-impostazioni" class="tab-content">
+      <div class="section-header">
+        <h2>Impostazioni</h2>
+      </div>
+      <form class="settings-form" id="settingsForm">
+        <div class="settings-group">
+          <h3>Persone</h3>
+          <div class="form-row">
+            <label>Nome Lui</label>
+            <input type="text" name="nome_lui" placeholder="es. Marco">
+          </div>
+          <div class="form-row">
+            <label>Nome Lei</label>
+            <input type="text" name="nome_lei" placeholder="es. Sara">
+          </div>
+        </div>
+        <div class="settings-group">
+          <h3>Email</h3>
+          <div class="form-row">
+            <label>Email Lui</label>
+            <input type="email" name="email_lui" placeholder="lui@esempio.it">
+          </div>
+          <div class="form-row">
+            <label>Email Lei</label>
+            <input type="email" name="email_lei" placeholder="lei@esempio.it">
+          </div>
+        </div>
+        <div class="settings-group">
+          <h3>Configurazione Email (Gmail)</h3>
+          <p class="settings-note">
+            Per inviare email, usa Gmail con una <strong>App Password</strong> dedicata.
+            <a href="https://myaccount.google.com/apppasswords" target="_blank">Crea App Password →</a>
+          </p>
+          <div class="form-row">
+            <label>Server SMTP</label>
+            <input type="text" name="smtp_host" placeholder="smtp.gmail.com">
+          </div>
+          <div class="form-row">
+            <label>Porta SMTP</label>
+            <input type="number" name="smtp_port" placeholder="587">
+          </div>
+          <div class="form-row">
+            <label>Account Gmail</label>
+            <input type="email" name="smtp_user" placeholder="tuoemail@gmail.com">
+          </div>
+          <div class="form-row">
+            <label>App Password</label>
+            <input type="password" name="smtp_pass" placeholder="App password Gmail (16 caratteri)">
+          </div>
+        </div>
+        <div class="settings-group">
+          <h3>Reminder attivi</h3>
+          <div class="reminder-list">
+            <div class="reminder-item">
+              <span class="reminder-icon">🕙</span>
+              <div>
+                <strong>10:30 ogni giorno</strong>
+                <p>Ingredienti per il pranzo del giorno</p>
+              </div>
+            </div>
+            <div class="reminder-item">
+              <span class="reminder-icon">🕓</span>
+              <div>
+                <strong>16:30 ogni giorno</strong>
+                <p>Ingredienti per la cena del giorno</p>
+              </div>
+            </div>
+            <div class="reminder-item">
+              <span class="reminder-icon">📅</span>
+              <div>
+                <strong>Domenica sera (20:00)</strong>
+                <p>Lista spesa settimana prossima (solo se il piano è confermato)</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Salva impostazioni</button>
+        <div class="save-feedback" id="saveFeedback"></div>
+      </form>
+    </section>
+  </main>
+
+  <!-- MODAL: sostituzione pasto -->
+  <div class="modal-overlay" id="modalOverlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">Scegli un pasto</h3>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        <div class="loading-state">Caricamento opzioni...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: aggiungi/modifica pasto -->
+  <div class="modal-overlay" id="mealFormOverlay" style="display:none">
+    <div class="modal modal-large">
+      <div class="modal-header">
+        <h3 id="mealFormTitle">Nuovo pasto</h3>
+        <button class="modal-close" id="mealFormClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="mealForm">
+          <input type="hidden" name="id">
+          <div class="form-grid">
+            <div class="form-row full">
+              <label>Nome pasto *</label>
+              <input type="text" name="name" required placeholder="es. Pasta al pomodoro">
+            </div>
+            <div class="form-row">
+              <label>Categoria *</label>
+              <select name="category" required>
+                <option value="colazione">Colazione</option>
+                <option value="spuntino">Spuntino</option>
+                <option value="pranzo">Pranzo</option>
+                <option value="merenda">Merenda</option>
+                <option value="cena">Cena</option>
+              </select>
+            </div>
+            <div class="form-row full">
+              <label>Descrizione / Note preparazione</label>
+              <textarea name="description" rows="2" placeholder="Come si prepara..."></textarea>
+            </div>
+          </div>
+
+          <div class="ing-section">
+            <div class="form-section-title">🥦 Ingredienti</div>
+            <p class="ing-help-text">Aggiungi gli ingredienti: i <strong>valori nutrizionali vengono calcolati automaticamente</strong>.</p>
+            <div class="ing-table-header">
+              <span>Ingrediente</span>
+              <span>Qtà Lui</span>
+              <span>Qtà Lei</span>
+              <span>Unità</span>
+              <span></span>
+            </div>
+            <div id="ingredientRows"></div>
+            <button type="button" class="btn btn-secondary ing-add-btn" id="btnAddIngredient">+ Ingrediente</button>
+          </div>
+
+          <div class="nutrition-preview" id="nutritionPreview">
+            <div class="nutrition-preview-title">🧮 Valori nutrizionali calcolati</div>
+            <div class="nutrition-preview-grid">
+              <div class="nutrition-preview-col">
+                <span class="nutrition-preview-label">👨 Lui</span>
+                <span id="prevKcalLui" class="prev-kcal">0</span> kcal ·
+                <span id="prevProtLui">0</span>g prot ·
+                <span id="prevCarbsLui">0</span>g carb ·
+                <span id="prevFatsLui">0</span>g grassi
+              </div>
+              <div class="nutrition-preview-col">
+                <span class="nutrition-preview-label">👩 Lei</span>
+                <span id="prevKcalLei" class="prev-kcal">0</span> kcal ·
+                <span id="prevProtLei">0</span>g prot ·
+                <span id="prevCarbsLei">0</span>g carb ·
+                <span id="prevFatsLei">0</span>g grassi
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="mealFormCancel">Annulla</button>
+            <button type="submit" class="btn btn-primary">Salva</button>
+          </div>
+        </form>
+        <datalist id="ingredientSuggestions"></datalist>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: aggiungi/modifica ingrediente -->
+  <div class="modal-overlay" id="ingFormOverlay" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="ingFormTitle">Nuovo ingrediente</h3>
+        <button class="modal-close" id="ingFormClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="ingForm">
+          <input type="hidden" name="id">
+          <div class="form-grid">
+            <div class="form-row full">
+              <label>Nome ingrediente *</label>
+              <div class="ing-lookup-row">
+                <input type="text" name="name" required placeholder="es. Mandorle">
+                <button type="button" class="btn btn-secondary" id="btnLookupNutrition">🔍 Cerca valori</button>
+              </div>
+              <small class="form-hint">Digita il nome e clicca "Cerca valori" per compilare automaticamente i dati nutrizionali.</small>
+            </div>
+            <div class="form-row">
+              <label>Kcal / 100g</label>
+              <input type="number" name="kcal_per_100" placeholder="0" min="0" step="any">
+            </div>
+            <div class="form-row">
+              <label>Proteine / 100g (g)</label>
+              <input type="number" name="protein_per_100" placeholder="0" min="0" step="any">
+            </div>
+            <div class="form-row">
+              <label>Carboidrati / 100g (g)</label>
+              <input type="number" name="carbs_per_100" placeholder="0" min="0" step="any">
+            </div>
+            <div class="form-row">
+              <label>Grassi / 100g (g)</label>
+              <input type="number" name="fats_per_100" placeholder="0" min="0" step="any">
+            </div>
+            <div class="form-row">
+              <label>Peso per pezzo (g)</label>
+              <input type="number" name="weight_per_piece" placeholder="100" min="0" step="any">
+              <small class="form-hint">Solo se si misura in pezzi (es. 1 uovo = 60g). Lascia 100 per grammi/ml.</small>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="ingFormCancel">Annulla</button>
+            <button type="submit" class="btn btn-primary">Salva</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST notification -->
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

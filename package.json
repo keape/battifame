@@ -1,0 +1,17 @@
+{
+  "name": "battifame",
+  "version": "1.0.0",
+  "description": "App per la gestione nutrizionale di coppia",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node src/seed.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.9"
+  }
+}

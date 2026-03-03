@@ -1,0 +1,34 @@
+Requisiti app nutrizione
+# Scopo
+Voglio un’applicazione per gestire il fabbisogno nutrizionale di una coppia che vuole dimagrire e vuole un aiuto nella preparazione dei pasti, nell’acquisto degli alimenti e dei reminder giornalieri e settimanali.
+
+# Destinatari
+I fruitori di questa applicazione sono due persone:
+1. Uomo di 40 anni, alto 1,83 di 83kg. Intende dimagrire 4 kg
+2. Donna di 38 anni, alta 1,62 di 66kg che allatta (al 50% con anche artificiale) un bambino di 4 mesi. Intende dimagrire 10 kg
+Stile di vita sedentario con un bambino di 4 mesi.
+
+# Funzionalità
+## Gestione DB
+1. Deve gestire un DB di pasti che va a popolare, ogni settimana, il programma per la settimana successiva
+2. Il DB deve tener conto delle quantità differenziate per lui e per lei
+3. Il DB deve contenere varie opzioni per 
+    1. Colazione
+    2. Spuntino
+    3. Pranzo
+    4. Merenda
+    5. Cena 
+## Front end
+1. Deve mostrare 5 pasti al giorno per lei e 4 pasti per lui
+    1. Di questi pasti deve dare evidenza delle quantità per lei e per lui ad ogni pasto
+    2. Deve dare la vista di tutti i pasti previsti nel corso della settimana rimanente
+    3. Deve dare la possibilità di modificare cosa mangiare in ciascuno dei pasti in base alle opzioni disponibili a DB
+## Reminder
+    1. Deve avere dei reminder via email
+    2. Il primo reminder deve essere settimanale per gestire la spesa da fare in conseguenza dei pasti scelti per la settimana successiva
+        1. Quindi è necessario che sia mandato il reminder solo dopo che sono stati impostati i pasti per la settimana successiva
+    3. Il secondo reminder alle 10:30 per ricordare gli ingredienti che serviranno per il pranzo
+    4. Il terzo reminder alle 16:30 per ricordare gli ingredienti che serviranno per la cena
+
+# Infrastruttura
+Non sono un tecnico e non riesco a darti dei requisiti puntuali su come deve essere sviluppata. Su questo puoi suggerire le alternative che ritieni più appropriate.
