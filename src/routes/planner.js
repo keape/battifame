@@ -60,6 +60,23 @@ router.post('/generate', (req, res) => {
   res.json({ week, entries, status, generated });
 });
 
+// PUT /api/plan/quantities  — aggiorna quantità per persona in uno slot
+router.put('/quantities', (req, res) => {
+  const { plan_id, qty_overrides_lui, qty_overrides_lei, plan_kcal_lui, plan_kcal_lei } = req.body;
+  if (!plan_id) return res.status(400).json({ error: 'plan_id richiesto' });
+
+  const data = {};
+  if (qty_overrides_lui !== undefined)
+    data.qty_overrides_lui = qty_overrides_lui !== null ? JSON.stringify(qty_overrides_lui) : null;
+  if (qty_overrides_lei !== undefined)
+    data.qty_overrides_lei = qty_overrides_lei !== null ? JSON.stringify(qty_overrides_lei) : null;
+  if (plan_kcal_lui !== undefined) data.plan_kcal_lui = plan_kcal_lui;
+  if (plan_kcal_lei !== undefined) data.plan_kcal_lei = plan_kcal_lei;
+
+  db.updatePlanQuantities(parseInt(plan_id, 10), data);
+  res.json({ ok: true });
+});
+
 // PUT /api/plan/:id  — sostituisci un singolo pasto
 router.put('/:id', (req, res) => {
   const { meal_option_id } = req.body;

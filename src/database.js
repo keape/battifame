@@ -88,6 +88,24 @@ function initSchema() {
   if (!cols.includes('qty_lei_num')) {
     db.exec("ALTER TABLE meal_ingredients ADD COLUMN qty_lei_num REAL DEFAULT 0");
   }
+  if (!cols.includes('qty_base_num')) {
+    db.exec("ALTER TABLE meal_ingredients ADD COLUMN qty_base_num REAL DEFAULT 0");
+  }
+
+  // Migrazione: aggiungi colonne override quantità a weekly_plan
+  const wpCols = db.prepare("PRAGMA table_info(weekly_plan)").all().map(c => c.name);
+  if (!wpCols.includes('qty_overrides_lui')) {
+    db.exec("ALTER TABLE weekly_plan ADD COLUMN qty_overrides_lui TEXT DEFAULT NULL");
+  }
+  if (!wpCols.includes('qty_overrides_lei')) {
+    db.exec("ALTER TABLE weekly_plan ADD COLUMN qty_overrides_lei TEXT DEFAULT NULL");
+  }
+  if (!wpCols.includes('plan_kcal_lui')) {
+    db.exec("ALTER TABLE weekly_plan ADD COLUMN plan_kcal_lui INTEGER DEFAULT NULL");
+  }
+  if (!wpCols.includes('plan_kcal_lei')) {
+    db.exec("ALTER TABLE weekly_plan ADD COLUMN plan_kcal_lei INTEGER DEFAULT NULL");
+  }
 
   // Seed ingredient_nutrition se vuoto
   const ingCount = db.prepare('SELECT COUNT(*) as c FROM ingredient_nutrition').get();
@@ -169,75 +187,50 @@ function deleteIngredientNutrition(id) {
   return getDb().prepare('DELETE FROM ingredient_nutrition WHERE id = ?').run(id);
 }
 
-/** Ricalcola e aggiorna i valori nutrizionali del pasto a partire dagli ingredienti. */
+/** Ricalcola e aggiorna i valori nutrizionali del pasto a partire dalla qty base degli ingredienti. */
 function calculateAndUpdateNutrition(mealOptionId) {
   const ingredients = getIngredients(mealOptionId);
-  let t = { kcal_lui: 0, protein_lui: 0, carbs_lui: 0, fats_lui: 0,
-            kcal_lei: 0, protein_lei: 0, carbs_lei: 0, fats_lei: 0 };
-  const descLui = [], descLei = [];
+  let kcal = 0, protein = 0, carbs = 0, fats = 0;
+  const desc = [];
 
   for (const ing of ingredients) {
     const n = getIngredientNutrition(ing.ingredient);
-    const qLui = parseFloat(ing.qty_lui_num) || 0;
-    const qLei = parseFloat(ing.qty_lei_num) || 0;
+    const qBase = parseFloat(ing.qty_base_num) || 0;
     const weightPz = n ? n.weight_per_piece : 100;
 
-    if (qLui > 0) {
-      const gLui = ing.unit === 'pz' ? qLui * weightPz : qLui;
+    if (qBase > 0) {
+      const grams = ing.unit === 'pz' ? qBase * weightPz : qBase;
       if (n) {
-        t.kcal_lui    += n.kcal_per_100    * gLui / 100;
-        t.protein_lui += n.protein_per_100 * gLui / 100;
-        t.carbs_lui   += n.carbs_per_100   * gLui / 100;
-        t.fats_lui    += n.fats_per_100    * gLui / 100;
+        kcal    += n.kcal_per_100    * grams / 100;
+        protein += n.protein_per_100 * grams / 100;
+        carbs   += n.carbs_per_100   * grams / 100;
+        fats    += n.fats_per_100    * grams / 100;
       }
       const label = ing.unit === 'pz'
-        ? `${qLui} ${ing.ingredient}`
-        : `${qLui}${ing.unit} ${ing.ingredient}`;
-      descLui.push(label);
-    }
-
-    if (qLei > 0) {
-      const gLei = ing.unit === 'pz' ? qLei * weightPz : qLei;
-      if (n) {
-        t.kcal_lei    += n.kcal_per_100    * gLei / 100;
-        t.protein_lei += n.protein_per_100 * gLei / 100;
-        t.carbs_lei   += n.carbs_per_100   * gLei / 100;
-        t.fats_lei    += n.fats_per_100    * gLei / 100;
-      }
-      const label = ing.unit === 'pz'
-        ? `${qLei} ${ing.ingredient}`
-        : `${qLei}${ing.unit} ${ing.ingredient}`;
-      descLei.push(label);
+        ? `${qBase} ${ing.ingredient}`
+        : `${qBase}${ing.unit} ${ing.ingredient}`;
+      desc.push(label);
     }
   }
 
-  // Arrotondamento
-  t.kcal_lui    = Math.round(t.kcal_lui);
-  t.protein_lui = Math.round(t.protein_lui * 10) / 10;
-  t.carbs_lui   = Math.round(t.carbs_lui   * 10) / 10;
-  t.fats_lui    = Math.round(t.fats_lui    * 10) / 10;
-  t.kcal_lei    = Math.round(t.kcal_lei);
-  t.protein_lei = Math.round(t.protein_lei * 10) / 10;
-  t.carbs_lei   = Math.round(t.carbs_lei   * 10) / 10;
-  t.fats_lei    = Math.round(t.fats_lei    * 10) / 10;
+  kcal    = Math.round(kcal);
+  protein = Math.round(protein * 10) / 10;
+  carbs   = Math.round(carbs   * 10) / 10;
+  fats    = Math.round(fats    * 10) / 10;
+  const qtyDesc = desc.join(', ');
 
   getDb().prepare(`
     UPDATE meal_options SET
-      kcal_lui = @kcal_lui, protein_lui = @protein_lui,
-      carbs_lui = @carbs_lui, fats_lui = @fats_lui,
-      qty_description_lui = @qty_description_lui,
-      kcal_lei = @kcal_lei, protein_lei = @protein_lei,
-      carbs_lei = @carbs_lei, fats_lei = @fats_lei,
-      qty_description_lei = @qty_description_lei
+      kcal_lui = @kcal, protein_lui = @protein,
+      carbs_lui = @carbs, fats_lui = @fats,
+      qty_description_lui = @qtyDesc,
+      kcal_lei = @kcal, protein_lei = @protein,
+      carbs_lei = @carbs, fats_lei = @fats,
+      qty_description_lei = @qtyDesc
     WHERE id = @id
-  `).run({
-    ...t,
-    qty_description_lui: descLui.join(', '),
-    qty_description_lei: descLei.join(', '),
-    id: mealOptionId,
-  });
+  `).run({ kcal, protein, carbs, fats, qtyDesc, id: mealOptionId });
 
-  return t;
+  return { kcal_lui: kcal, kcal_lei: kcal };
 }
 
 // ─── MEAL OPTIONS ────────────────────────────────────────────────────────────
@@ -298,14 +291,11 @@ function replaceIngredients(mealOptionId, ingredients) {
   const d = getDb();
   d.prepare('DELETE FROM meal_ingredients WHERE meal_option_id = ?').run(mealOptionId);
   const insert = d.prepare(
-    'INSERT INTO meal_ingredients (meal_option_id, ingredient, qty_lui, qty_lei, unit, qty_lui_num, qty_lei_num) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO meal_ingredients (meal_option_id, ingredient, unit, qty_base_num) VALUES (?, ?, ?, ?)'
   );
   for (const ing of ingredients) {
-    const qLuiNum = parseFloat(ing.qty_lui_num) || 0;
-    const qLeiNum = parseFloat(ing.qty_lei_num) || 0;
-    const qLui = ing.qty_lui || (qLuiNum > 0 ? `${qLuiNum}${ing.unit || 'g'}` : '');
-    const qLei = ing.qty_lei || (qLeiNum > 0 ? `${qLeiNum}${ing.unit || 'g'}` : '');
-    insert.run(mealOptionId, ing.ingredient, qLui, qLei, ing.unit || 'g', qLuiNum, qLeiNum);
+    const qBase = parseFloat(ing.qty_base_num) || 0;
+    insert.run(mealOptionId, ing.ingredient, ing.unit || 'g', qBase);
   }
 }
 
@@ -313,9 +303,16 @@ function replaceIngredients(mealOptionId, ingredients) {
 
 function getWeekPlan(weekStart) {
   return getDb().prepare(`
-    SELECT wp.*, mo.name, mo.category,
-           mo.kcal_lui, mo.qty_description_lui,
-           mo.kcal_lei, mo.qty_description_lei
+    SELECT wp.id, wp.week_start, wp.day_of_week, wp.meal_category, wp.meal_option_id,
+           wp.qty_overrides_lui, wp.qty_overrides_lei, wp.plan_kcal_lui, wp.plan_kcal_lei,
+           mo.name, mo.category,
+           mo.kcal_lui AS base_kcal_lui, mo.kcal_lei AS base_kcal_lei,
+           mo.qty_description_lui, mo.qty_description_lei,
+           (SELECT json_group_array(json_object(
+               'ingredient', mi.ingredient,
+               'qty_base_num', mi.qty_base_num,
+               'unit', mi.unit
+           )) FROM meal_ingredients mi WHERE mi.meal_option_id = wp.meal_option_id) AS ingredients_json
     FROM weekly_plan wp
     LEFT JOIN meal_options mo ON mo.id = wp.meal_option_id
     WHERE wp.week_start = ?
@@ -323,12 +320,40 @@ function getWeekPlan(weekStart) {
   `).all(weekStart);
 }
 
+function updatePlanQuantities(planId, data) {
+  const updates = [];
+  const params = [];
+  if (data.qty_overrides_lui !== undefined) {
+    updates.push('qty_overrides_lui = ?');
+    params.push(data.qty_overrides_lui);
+  }
+  if (data.qty_overrides_lei !== undefined) {
+    updates.push('qty_overrides_lei = ?');
+    params.push(data.qty_overrides_lei);
+  }
+  if (data.plan_kcal_lui !== undefined) {
+    updates.push('plan_kcal_lui = ?');
+    params.push(data.plan_kcal_lui);
+  }
+  if (data.plan_kcal_lei !== undefined) {
+    updates.push('plan_kcal_lei = ?');
+    params.push(data.plan_kcal_lei);
+  }
+  if (!updates.length) return;
+  params.push(planId);
+  getDb().prepare(`UPDATE weekly_plan SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+}
+
 function setPlanEntry(weekStart, dayOfWeek, mealCategory, mealOptionId) {
   getDb().prepare(`
     INSERT INTO weekly_plan (week_start, day_of_week, meal_category, meal_option_id)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(week_start, day_of_week, meal_category)
-    DO UPDATE SET meal_option_id = excluded.meal_option_id
+    DO UPDATE SET meal_option_id = excluded.meal_option_id,
+                  qty_overrides_lui = NULL,
+                  qty_overrides_lei = NULL,
+                  plan_kcal_lui = NULL,
+                  plan_kcal_lei = NULL
   `).run(weekStart, dayOfWeek, mealCategory, mealOptionId);
 }
 
@@ -368,14 +393,12 @@ function markShoppingSent(weekStart) {
 
 function getShoppingList(weekStart) {
   return getDb().prepare(`
-    SELECT mi.ingredient, mi.unit,
-           GROUP_CONCAT(mi.qty_lui, '|') AS qtys_lui,
-           GROUP_CONCAT(mi.qty_lei, '|') AS qtys_lei
+    SELECT mi.ingredient, mi.unit
     FROM weekly_plan wp
     JOIN meal_options mo ON mo.id = wp.meal_option_id
     JOIN meal_ingredients mi ON mi.meal_option_id = mo.id
     WHERE wp.week_start = ?
-      AND (mi.qty_lui_num > 0 OR mi.qty_lei_num > 0)
+      AND mi.qty_base_num > 0
     GROUP BY mi.ingredient, mi.unit
     ORDER BY mi.ingredient
   `).all(weekStart);
@@ -430,7 +453,7 @@ module.exports = {
   getIngredients, replaceIngredients,
   getIngredientNutrition, listIngredients, calculateAndUpdateNutrition,
   getIngredientById, createIngredientNutrition, updateIngredientNutrition, deleteIngredientNutrition,
-  getWeekPlan, setPlanEntry, deletePlanEntry, getWeeksWithPlan,
+  getWeekPlan, setPlanEntry, deletePlanEntry, getWeeksWithPlan, updatePlanQuantities,
   getWeekStatus, confirmWeek, markShoppingSent,
   getShoppingList,
   getSetting, getAllSettings, setSetting, setSettings,

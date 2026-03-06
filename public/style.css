@@ -589,7 +589,7 @@ body {
 .ing-help-text { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.5; }
 .ing-table-header {
   display: grid;
-  grid-template-columns: 1fr 80px 80px 64px 32px;
+  grid-template-columns: 1fr 100px 64px 32px;
   gap: 6px;
   padding: 6px 8px;
   font-size: 11px;
@@ -603,7 +603,7 @@ body {
 }
 .ing-row {
   display: grid;
-  grid-template-columns: 1fr 80px 80px 64px 32px;
+  grid-template-columns: 1fr 100px 64px 32px;
   gap: 6px;
   padding: 6px 8px;
   border: 1px solid var(--border);
@@ -656,10 +656,105 @@ body {
   color: var(--text-muted);
   margin-bottom: 8px;
 }
-.nutrition-preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .nutrition-preview-col { font-size: 13px; color: var(--text-muted); line-height: 1.8; }
 .nutrition-preview-label { font-weight: 700; color: var(--green-dark); display: block; margin-bottom: 2px; }
 .prev-kcal { font-size: 15px; font-weight: 700; color: var(--green-dark); }
+
+/* ─── PIANO: slot pasto con quantità inline ─────────────────────────────── */
+.meal-slot {
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+.meal-slot:hover { border-color: var(--green-light); }
+.meal-slot-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.meal-slot-name-area {
+  flex: 1;
+  min-width: 0;
+}
+.meal-slot-name-area .meal-name { display: block; }
+.meal-slot-name-area .meal-kcal { display: block; font-size: 11px; color: var(--text-muted); }
+.meal-swap-btn {
+  flex-shrink: 0;
+  font-size: 13px;
+  padding: 3px 8px;
+}
+.plan-qty-inputs {
+  margin-top: 6px;
+  border-top: 1px solid var(--green-pale);
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.plan-qty-row {
+  display: grid;
+  grid-template-columns: 1fr 56px 24px;
+  gap: 4px;
+  align-items: center;
+}
+.plan-qty-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-qty-input {
+  padding: 3px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-main);
+  background: #fff;
+  width: 100%;
+  text-align: right;
+  font-family: inherit;
+}
+.plan-qty-input:focus {
+  outline: none;
+  border-color: var(--green-light);
+}
+.plan-qty-unit {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.plan-ing-list {
+  margin-top: 4px;
+  border-top: 1px dashed var(--green-pale);
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.plan-qty-ing-val {
+  font-size: 12px;
+  color: var(--text-main);
+  text-align: right;
+  font-family: inherit;
+}
+.plan-ing-row .plan-qty-label {
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+.meal-row-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: background .15s;
+  border: 1px solid transparent;
+}
+.meal-row-empty:hover { background: var(--green-xpale); border-color: var(--green-pale); }
 
 /* ─── TOAST ──────────────────────────────────────────────────────────────── */
 .toast {

@@ -163,6 +163,13 @@ function renderPiano() {
   const grid = document.getElementById('weekGrid');
   const entries = state.planData.entries || [];
 
+  // Pre-processa le entry: parse JSON
+  for (const e of entries) {
+    e._ingredients = e.ingredients_json ? JSON.parse(e.ingredients_json) : [];
+    e._overrides_lui = e.qty_overrides_lui ? JSON.parse(e.qty_overrides_lui) : {};
+    e._overrides_lei = e.qty_overrides_lei ? JSON.parse(e.qty_overrides_lei) : {};
+  }
+
   // Organizza per giorno e categoria
   const byDay = {};
   for (const e of entries) {
@@ -175,23 +182,27 @@ function renderPiano() {
     const dayDate = addDays(state.viewWeek, day);
     const dateLabel = new Date(dayDate + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
 
-    // Calcola kcal giornalieri
+    // Calcola kcal giornalieri (usa plan_kcal se disponibile, altrimenti base)
     const dayEntries = byDay[day] || {};
     let kcalLui = 0, kcalLei = 0;
-    for (const cat of CAT_LUI) if (dayEntries[cat]) kcalLui += dayEntries[cat].kcal_lui || 0;
-    for (const cat of CAT_LEI) if (dayEntries[cat]) kcalLei += dayEntries[cat].kcal_lei || 0;
-
-    const kcalLuiClass = kcalLui > 0 ? (Math.abs(kcalLui - 1635) < 150 ? 'ok' : 'warn') : '';
-    const kcalLeiClass = kcalLei > 0 ? (Math.abs(kcalLei - 1686) < 150 ? 'ok' : 'warn') : '';
+    for (const cat of CAT_LUI) {
+      if (dayEntries[cat]) {
+        const e = dayEntries[cat];
+        kcalLui += e.plan_kcal_lui ?? e.base_kcal_lui ?? 0;
+      }
+    }
+    for (const cat of CAT_LEI) {
+      if (dayEntries[cat]) {
+        const e = dayEntries[cat];
+        kcalLei += e.plan_kcal_lei ?? e.base_kcal_lei ?? 0;
+      }
+    }
 
     html += `<div class="day-card">
       <div class="day-header">
         <span class="day-name">${DAYS_IT[day]}</span>
         <span class="day-date">${dateLabel}</span>
-        <span class="day-kcal">
-          ${kcalLui > 0 ? `👨 ${kcalLui} kcal` : ''}
-          ${kcalLei > 0 ? ` · 👩 ${kcalLei} kcal` : ''}
-        </span>
+        <span class="day-kcal">${kcalLui > 0 ? `👨 ${kcalLui} kcal` : ''}${kcalLei > 0 ? ` · 👩 ${kcalLei} kcal` : ''}</span>
       </div>
       <div class="day-body">
         <div class="person-col">
@@ -208,40 +219,136 @@ function renderPiano() {
 
   grid.innerHTML = html;
 
-  // Aggiungi event listener per sostituzione pasti
-  grid.querySelectorAll('.meal-row[data-clickable="1"]').forEach(row => {
+  // Slot vuoti — clic per aggiungere pasto
+  grid.querySelectorAll('.meal-row-empty').forEach(row => {
     row.addEventListener('click', () => {
       const { cat, day, week } = row.dataset;
       openSwapModal(cat, parseInt(day, 10), week);
     });
   });
 
+  // Pulsanti swap nei slot pieni
+  grid.querySelectorAll('.meal-swap-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const { cat, day, week } = btn.dataset;
+      openSwapModal(cat, parseInt(day, 10), week);
+    });
+  });
+
+  // Qty inputs — aggiorna kcal in tempo reale e auto-save
+  grid.querySelectorAll('.plan-qty-input').forEach(inp => {
+    inp.addEventListener('input', () => updateSlotKcal(inp));
+    inp.addEventListener('change', () => savePlanQty(inp));
+  });
+
   // Abilita/disabilita pulsante conferma
-  const totalExpected = 7 * (CAT_LUI.length + CAT_LEI.length);
-  const filled = Object.values(byDay).reduce((acc, dayObj) => {
-    return acc + Object.keys(dayObj).length;
-  }, 0);
+  const filled = Object.values(byDay).reduce((acc, dayObj) => acc + Object.keys(dayObj).length, 0);
   document.getElementById('btnConferma').disabled =
     (state.planData.status && state.planData.status.confirmed) || filled === 0;
 }
 
 function renderMealRow(entry, cat, day, person) {
   if (!entry || !entry.meal_option_id) {
-    return `<div class="meal-row" data-clickable="1" data-cat="${cat}" data-day="${day}" data-week="${state.viewWeek}">
+    return `<div class="meal-row-empty" data-cat="${cat}" data-day="${day}" data-week="${state.viewWeek}">
       <span class="meal-cat-badge cat-${cat}">${CAT_LABELS[cat]}</span>
       <span class="meal-info"><span class="meal-empty">Nessun pasto — clicca per aggiungere</span></span>
     </div>`;
   }
-  const kcal = person === 'lui' ? entry.kcal_lui : entry.kcal_lei;
-  const qty = person === 'lui' ? entry.qty_description_lui : entry.qty_description_lei;
-  return `<div class="meal-row" data-clickable="1" data-cat="${cat}" data-day="${day}" data-week="${state.viewWeek}" title="Clicca per cambiare pasto">
-    <span class="meal-cat-badge cat-${cat}">${CAT_LABELS[cat]}</span>
-    <span class="meal-info">
-      <span class="meal-name">${entry.name}</span>
-      ${kcal ? `<span class="meal-kcal">${kcal} kcal</span>` : ''}
-      ${qty && qty !== 'Non previsto' ? `<span class="meal-qty">${qty}</span>` : ''}
-    </span>
+
+  const baseKcal = person === 'lui'
+    ? (entry.base_kcal_lui ?? 0)
+    : (entry.base_kcal_lei ?? 0);
+
+  const overrides = person === 'lui' ? (entry._overrides_lui || {}) : (entry._overrides_lei || {});
+  const factor = overrides._factor != null ? overrides._factor : 1;
+  const kcal = Math.round(baseKcal * factor);
+  const ingredients = entry._ingredients || [];
+
+  const ingRowsHtml = ingredients.map(ing => {
+    const qty = Math.round(ing.qty_base_num * factor * 10) / 10;
+    return `<div class="plan-qty-row plan-ing-row">
+      <span class="plan-qty-label" title="${escHtml(ing.ingredient)}">${escHtml(ing.ingredient)}</span>
+      <span class="plan-qty-ing-val" data-base="${ing.qty_base_num}">${qty}</span>
+      <span class="plan-qty-unit">${ing.unit}</span>
+    </div>`;
+  }).join('');
+
+  const qtyInputHtml = `<div class="plan-qty-inputs">
+    <div class="plan-qty-row">
+      <span class="plan-qty-label">Porzione</span>
+      <input type="number" class="plan-qty-input" min="0" step="0.1"
+             data-plan-id="${entry.id}" data-person="${person}"
+             data-base-kcal="${baseKcal}"
+             value="${factor}">
+      <span class="plan-qty-unit">×</span>
+    </div>
+    ${ingRowsHtml ? `<div class="plan-ing-list">${ingRowsHtml}</div>` : ''}
   </div>`;
+
+  return `<div class="meal-slot" data-plan-id="${entry.id}">
+    <div class="meal-slot-header">
+      <span class="meal-cat-badge cat-${cat}">${CAT_LABELS[cat]}</span>
+      <div class="meal-slot-name-area">
+        <span class="meal-name">${escHtml(entry.name)}</span>
+        <span class="meal-kcal"><span class="plan-kcal" data-person="${person}">${kcal > 0 ? kcal : 0}</span> kcal</span>
+      </div>
+      <button class="btn-sm meal-swap-btn" data-cat="${cat}" data-day="${day}" data-week="${state.viewWeek}" title="Cambia pasto">↔</button>
+    </div>
+    ${baseKcal > 0 ? qtyInputHtml : ''}
+  </div>`;
+}
+
+function updateSlotKcal(changedInput) {
+  const person = changedInput.dataset.person;
+  const slot = changedInput.closest('.meal-slot');
+  if (!slot) return;
+
+  const baseKcal = parseFloat(changedInput.dataset.baseKcal) || 0;
+  const factor = parseFloat(changedInput.value) || 0;
+  const kcal = Math.round(baseKcal * factor);
+
+  const kcalEl = slot.querySelector(`.plan-kcal[data-person="${person}"]`);
+  if (kcalEl) kcalEl.textContent = kcal > 0 ? kcal : 0;
+
+  // Aggiorna quantità ingredienti calcolate
+  slot.querySelectorAll('.plan-qty-ing-val').forEach(el => {
+    const base = parseFloat(el.dataset.base) || 0;
+    el.textContent = Math.round(base * factor * 10) / 10;
+  });
+
+  const dayCard = slot.closest('.day-card');
+  if (dayCard) updateDayKcalHeader(dayCard);
+}
+
+function savePlanQty(changedInput) {
+  const planId = parseInt(changedInput.dataset.planId, 10);
+  const person = changedInput.dataset.person;
+
+  const baseKcal = parseFloat(changedInput.dataset.baseKcal) || 0;
+  const factor = parseFloat(changedInput.value) || 0;
+  const kcal = Math.round(baseKcal * factor);
+
+  const body = { plan_id: planId };
+  if (person === 'lui') { body.qty_overrides_lui = { _factor: factor }; body.plan_kcal_lui = kcal; }
+  else                  { body.qty_overrides_lei = { _factor: factor }; body.plan_kcal_lei = kcal; }
+
+  api('/plan/quantities', { method: 'PUT', body: JSON.stringify(body) });
+}
+
+function updateDayKcalHeader(dayCard) {
+  let kcalLui = 0, kcalLei = 0;
+  dayCard.querySelectorAll('.plan-kcal[data-person="lui"]').forEach(el => {
+    kcalLui += parseInt(el.textContent, 10) || 0;
+  });
+  dayCard.querySelectorAll('.plan-kcal[data-person="lei"]').forEach(el => {
+    kcalLei += parseInt(el.textContent, 10) || 0;
+  });
+  const dayKcalEl = dayCard.querySelector('.day-kcal');
+  if (dayKcalEl) {
+    dayKcalEl.textContent =
+      (kcalLui > 0 ? `👨 ${kcalLui} kcal` : '') +
+      (kcalLei > 0 ? ` · 👩 ${kcalLei} kcal` : '');
+  }
 }
 
 // ─── SWAP MODAL ───────────────────────────────────────────────────────────────
@@ -268,8 +375,7 @@ function renderSwapOptions(meals) {
     <div class="option-item" data-id="${m.id}">
       <span class="option-item-name">${m.name}</span>
       <span class="option-item-meta">
-        <span>👨 ${m.kcal_lui || 0} kcal</span>
-        <span>👩 ${m.kcal_lei || 0} kcal</span>
+        <span>⚡ ${m.kcal_lui || 0} kcal (base)</span>
       </span>
       ${m.qty_description_lui ? `<span style="font-size:11px;color:#888">${m.qty_description_lui}</span>` : ''}
     </div>
@@ -338,16 +444,11 @@ function renderMealsGrid(meals) {
         <span class="meal-cat-badge cat-${m.category}">${CAT_LABELS[m.category]}</span>
       </div>
       ${m.description ? `<p class="meal-card-desc">${m.description}</p>` : ''}
-      <div class="nutrition-grid">
+      <div class="nutrition-grid" style="grid-template-columns:1fr">
         <div class="nutrition-col">
-          <div class="nutrition-col-label">👨 Lui</div>
+          <div class="nutrition-col-label">⚡ Kcal base</div>
           <div><span class="kcal-big">${m.kcal_lui || 0}</span> <span class="kcal-unit">kcal</span></div>
           ${m.qty_description_lui ? `<div class="qty-text">${m.qty_description_lui}</div>` : ''}
-        </div>
-        <div class="nutrition-col">
-          <div class="nutrition-col-label">👩 Lei</div>
-          <div><span class="kcal-big">${m.kcal_lei || 0}</span> <span class="kcal-unit">kcal</span></div>
-          ${m.qty_description_lei ? `<div class="qty-text">${m.qty_description_lei}</div>` : ''}
         </div>
       </div>
     </div>
@@ -384,10 +485,10 @@ function addIngredientRow(data = {}) {
   row.className = 'ing-row';
   const units = ['g', 'ml', 'pz'];
   const selectedUnit = data.unit || 'g';
+  const qtyBase = data.qty_base_num != null ? data.qty_base_num : (data.qty_lui_num != null ? data.qty_lui_num : '');
   row.innerHTML = `
     <input type="text" class="ing-name" placeholder="es. Pasta" list="ingredientSuggestions" value="${escHtml(data.ingredient || '')}">
-    <input type="number" class="ing-qty-lui" placeholder="0" min="0" step="any" value="${data.qty_lui_num != null ? data.qty_lui_num : (data.qty_lui || '')}">
-    <input type="number" class="ing-qty-lei" placeholder="0" min="0" step="any" value="${data.qty_lei_num != null ? data.qty_lei_num : (data.qty_lei || '')}">
+    <input type="number" class="ing-qty" placeholder="0" min="0" step="any" value="${qtyBase}">
     <select class="ing-unit">
       ${units.map(u => `<option value="${u}"${u === selectedUnit ? ' selected' : ''}>${u}</option>`).join('')}
     </select>
@@ -410,50 +511,34 @@ function collectIngredients() {
   for (const row of rows) {
     const ingredient = row.querySelector('.ing-name').value.trim();
     if (!ingredient) continue;
-    const qty_lui_num = parseFloat(row.querySelector('.ing-qty-lui').value) || 0;
-    const qty_lei_num = parseFloat(row.querySelector('.ing-qty-lei').value) || 0;
+    const qty_base_num = parseFloat(row.querySelector('.ing-qty').value) || 0;
     const unit = row.querySelector('.ing-unit').value;
-    result.push({ ingredient, qty_lui_num, qty_lei_num, unit });
+    result.push({ ingredient, qty_base_num, unit });
   }
   return result;
 }
 
 function updateNutritionPreview() {
   const ingredients = collectIngredients();
-  let kcalLui = 0, protLui = 0, carbsLui = 0, fatsLui = 0;
-  let kcalLei = 0, protLei = 0, carbsLei = 0, fatsLei = 0;
+  let kcal = 0, prot = 0, carbs = 0, fats = 0;
 
   for (const ing of ingredients) {
     const key = ing.ingredient.toLowerCase().trim();
     const nd = nutritionDataCache[key];
     if (!nd) continue;
-    const kcal    = nd.kcal_per_100;
-    const protein = nd.protein_per_100;
-    const carbs   = nd.carbs_per_100;
-    const fats    = nd.fats_per_100;
-    const wpz     = nd.weight_per_piece || 100;
-    // For 'pz' (pieces), convert to grams using weight_per_piece
-    const gramsLui = ing.unit === 'pz' ? ing.qty_lui_num * wpz : ing.qty_lui_num;
-    const gramsLei = ing.unit === 'pz' ? ing.qty_lei_num * wpz : ing.qty_lei_num;
-    kcalLui  += (gramsLui * kcal) / 100;
-    protLui  += (gramsLui * protein) / 100;
-    carbsLui += (gramsLui * carbs) / 100;
-    fatsLui  += (gramsLui * fats) / 100;
-    kcalLei  += (gramsLei * kcal) / 100;
-    protLei  += (gramsLei * protein) / 100;
-    carbsLei += (gramsLei * carbs) / 100;
-    fatsLei  += (gramsLei * fats) / 100;
+    const wpz = nd.weight_per_piece || 100;
+    const grams = ing.unit === 'pz' ? ing.qty_base_num * wpz : ing.qty_base_num;
+    kcal += (grams * nd.kcal_per_100)    / 100;
+    prot += (grams * nd.protein_per_100) / 100;
+    carbs += (grams * nd.carbs_per_100)  / 100;
+    fats += (grams * nd.fats_per_100)    / 100;
   }
 
   const r = v => Math.round(v);
-  document.getElementById('prevKcalLui').textContent  = r(kcalLui);
-  document.getElementById('prevProtLui').textContent  = r(protLui);
-  document.getElementById('prevCarbsLui').textContent = r(carbsLui);
-  document.getElementById('prevFatsLui').textContent  = r(fatsLui);
-  document.getElementById('prevKcalLei').textContent  = r(kcalLei);
-  document.getElementById('prevProtLei').textContent  = r(protLei);
-  document.getElementById('prevCarbsLei').textContent = r(carbsLei);
-  document.getElementById('prevFatsLei').textContent  = r(fatsLei);
+  document.getElementById('prevKcalBase').textContent  = r(kcal);
+  document.getElementById('prevProtBase').textContent  = r(prot);
+  document.getElementById('prevCarbsBase').textContent = r(carbs);
+  document.getElementById('prevFatsBase').textContent  = r(fats);
 }
 
 function openMealForm(meal, presetCategory) {
