@@ -40,6 +40,40 @@ router.get('/lookup', async (req, res) => {
   }
 });
 
+// GET /api/ingredients/barcode/:code — cerca prodotto per codice EAN su Open Food Facts
+router.get('/barcode/:code', async (req, res) => {
+  const code = req.params.code.trim();
+
+  const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(code)}.json` +
+    '?fields=product_name,nutriments';
+
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const data = await resp.json();
+
+    if (data.status !== 1 || !data.product) {
+      return res.status(404).json({ error: 'Prodotto non trovato. Prova la ricerca per nome.' });
+    }
+
+    const p = data.product;
+    const n = p.nutriments || {};
+
+    if (n['energy-kcal_100g'] == null) {
+      return res.status(404).json({ error: 'Valori nutrizionali non disponibili per questo prodotto.' });
+    }
+
+    return res.json({
+      name:            (p.product_name || '').trim(),
+      kcal_per_100:    Math.round(n['energy-kcal_100g']        || 0),
+      protein_per_100: Math.round((n['proteins_100g']          || 0) * 10) / 10,
+      carbs_per_100:   Math.round((n['carbohydrates_100g']     || 0) * 10) / 10,
+      fats_per_100:    Math.round((n['fat_100g']               || 0) * 10) / 10,
+    });
+  } catch (_) {
+    res.status(503).json({ error: 'Servizio non raggiungibile. Controlla la connessione internet.' });
+  }
+});
+
 // POST /api/ingredients — aggiungi un nuovo ingrediente
 router.post('/', (req, res) => {
   const data = req.body;
