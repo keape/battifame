@@ -312,6 +312,13 @@
                 <button type="button" class="btn btn-secondary" id="btnLookupNutrition">🔍 Cerca valori</button>
               </div>
               <small class="form-hint">Digita il nome e clicca "Cerca valori" per compilare automaticamente i dati nutrizionali.</small>
+              <div class="barcode-row">
+                <button type="button" class="btn btn-secondary" id="btnScanBarcode">📷 Scansiona</button>
+                <span class="barcode-sep">o codice:</span>
+                <input type="text" id="barcodeInput" placeholder="EAN-13"
+                       inputmode="numeric" maxlength="13">
+                <button type="button" class="btn btn-secondary" id="btnLookupBarcode">🔍</button>
+              </div>
             </div>
             <div class="form-row">
               <label>Kcal / 100g</label>
@@ -344,9 +351,19 @@
     </div>
   </div>
 
+  <!-- Camera overlay per scansione barcode -->
+  <div id="cameraOverlay" class="camera-overlay hidden">
+    <div class="camera-header">
+      <button id="btnCloseCamera" class="camera-close">✕ Chiudi</button>
+    </div>
+    <video id="cameraFeed" playsinline autoplay muted></video>
+    <p class="camera-hint">Inquadra il barcode sulla confezione</p>
+  </div>
+
   <!-- TOAST notification -->
   <div class="toast" id="toast"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.1/umd/index.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
