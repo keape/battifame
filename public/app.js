@@ -690,10 +690,19 @@ async function lookupByBarcode(code) {
 
 function stopBarcodeScanner() {
   if (zxingReader) { try { zxingReader.reset(); } catch (_) {} zxingReader = null; }
+  // Forza il rilascio delle tracce video per evitare che la fotocamera
+  // rimanga "occupata" tra un'apertura e l'altra del modal
+  const video = document.getElementById('cameraFeed');
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
   document.getElementById('cameraOverlay').classList.add('hidden');
 }
 
 async function startBarcodeScanner() {
+  // Assicura che una sessione precedente sia chiusa prima di aprirne una nuova
+  stopBarcodeScanner();
   document.getElementById('cameraOverlay').classList.remove('hidden');
   try {
     zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
@@ -712,7 +721,15 @@ async function startBarcodeScanner() {
     );
   } catch (err) {
     stopBarcodeScanner();
-    alert('Impossibile accedere alla fotocamera. Digita il codice manualmente.');
+    if (err.name === 'NotAllowedError') {
+      alert('Permesso fotocamera negato. Controlla le impostazioni del browser e ricarica la pagina.');
+    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+      alert('Nessuna fotocamera trovata su questo dispositivo.');
+    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+      alert('Fotocamera occupata da un\'altra app. Chiudila e riprova.');
+    } else {
+      alert('Impossibile accedere alla fotocamera (' + err.name + '). Digita il codice manualmente.');
+    }
   }
 }
 
