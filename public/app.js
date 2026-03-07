@@ -654,6 +654,7 @@ function openIngForm(ing) {
 }
 
 function closeIngForm() {
+  stopBarcodeScanner();
   document.getElementById('ingFormOverlay').style.display = 'none';
 }
 
@@ -668,6 +669,51 @@ async function deleteIngrediente(id, name) {
   showToast('Ingrediente eliminato.');
   await loadIngredienti();
   await loadNutritionData(); // aggiorna cache autocomplete
+}
+
+// ─── BARCODE SCAN ─────────────────────────────────────────────────────────────
+let zxingReader = null;
+
+async function lookupByBarcode(code) {
+  code = (code || '').trim();
+  if (!code) { alert('Inserisci un codice a barre.'); return; }
+  const result = await api(`/ingredients/barcode/${encodeURIComponent(code)}`);
+  if (result.error) { alert(result.error); return; }
+  const form = document.getElementById('ingForm');
+  if (result.name) form.elements['name'].value = result.name;
+  form.elements['kcal_per_100'].value    = result.kcal_per_100;
+  form.elements['protein_per_100'].value = result.protein_per_100;
+  form.elements['carbs_per_100'].value   = result.carbs_per_100;
+  form.elements['fats_per_100'].value    = result.fats_per_100;
+  showToast('Prodotto trovato!');
+}
+
+function stopBarcodeScanner() {
+  if (zxingReader) { try { zxingReader.reset(); } catch (_) {} zxingReader = null; }
+  document.getElementById('cameraOverlay').classList.add('hidden');
+}
+
+async function startBarcodeScanner() {
+  document.getElementById('cameraOverlay').classList.remove('hidden');
+  try {
+    zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+    await zxingReader.decodeFromVideoDevice(
+      undefined,
+      document.getElementById('cameraFeed'),
+      (result, err) => {
+        if (result) {
+          const code = result.getText();
+          stopBarcodeScanner();
+          document.getElementById('barcodeInput').value = code;
+          lookupByBarcode(code);
+        }
+        // err durante scan continuo è normale — ignorare
+      }
+    );
+  } catch (err) {
+    stopBarcodeScanner();
+    alert('Impossibile accedere alla fotocamera. Digita il codice manualmente.');
+  }
 }
 
 function initIngredienti() {
@@ -702,6 +748,15 @@ function initIngredienti() {
       btn.disabled = false;
     }
   });
+  document.getElementById('btnScanBarcode').addEventListener('click', startBarcodeScanner);
+  document.getElementById('btnCloseCamera').addEventListener('click', stopBarcodeScanner);
+  document.getElementById('btnLookupBarcode').addEventListener('click', () => {
+    lookupByBarcode(document.getElementById('barcodeInput').value);
+  });
+  document.getElementById('barcodeInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); lookupByBarcode(e.target.value); }
+  });
+
   document.getElementById('ingFormOverlay').addEventListener('click', e => {
     if (e.target === document.getElementById('ingFormOverlay')) closeIngForm();
   });
