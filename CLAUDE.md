@@ -12,7 +12,7 @@ src/seed.js                  — 18 pasti iniziali, SEED_VERSION corrente: '4'
 src/email.js                 — 3 template email HTML in italiano
 src/scheduler.js             — Cron: pranzo 10:30, cena 16:30, spesa dom 20:00
 src/routes/meals.js          — CRUD ricettario + GET /ingredients-list
-src/routes/ingredients.js    — CRUD ingredienti + GET /lookup (Open Food Facts)
+src/routes/ingredients.js    — CRUD ingredienti + GET /lookup + GET /barcode/:code (Open Food Facts)
 src/routes/planner.js        — Piano settimanale + auto-generazione + quantità
 src/routes/shopping.js       — Lista spesa aggregata
 src/routes/settings.js       — Impostazioni (email, SMTP)
@@ -59,7 +59,7 @@ Coppie chiave/valore: nomi, email, SMTP, `db_seed_version`.
 Incrementare `SEED_VERSION` in `src/seed.js` per forzare re-seed (cancella piani e ricette, reinserisce tutto). Versione attuale: `'4'`.
 
 ### Route ordering in Express
-`GET /api/ingredients/lookup` e `PUT /api/plan/quantities` devono essere registrati **prima** di `/:id` per evitare che Express li interpreti come ID.
+`GET /api/ingredients/lookup`, `GET /api/ingredients/barcode/:code` e `PUT /api/plan/quantities` devono essere registrati **prima** di `/:id` per evitare che Express li interpreti come ID.
 
 ### Quantità nel piano
 Il moltiplicatore porzione è salvato come `{"_factor": 1.5}` nel JSON di `qty_overrides_lui/lei`. Factor=1 significa quantità base. Le kcal visualizzate = `base_kcal * factor`.
@@ -68,7 +68,15 @@ Il moltiplicatore porzione è salvato come `{"_factor": 1.5}` nel JSON di `qty_o
 La query usa `json_group_array(json_object(...))` per aggregare gli ingredienti in un'unica colonna JSON. Il frontend la parsifica come `e._ingredients`.
 
 ### Open Food Facts Lookup
-`GET /api/ingredients/lookup?q=nome` — usa native fetch Node 18+, timeout 8s. Restituisce 503 se offline (atteso).
+`GET /api/ingredients/lookup?q=nome` — ricerca testuale, usa native fetch Node 18+, timeout 8s. Restituisce 503 se offline (atteso).
+`GET /api/ingredients/barcode/:code` — ricerca per EAN-13, chiama `https://world.openfoodfacts.org/api/v0/product/{code}.json`. Restituisce anche il campo `name` (nome prodotto). Registrata prima di `/:id`.
+
+### Scansione Barcode (tab Ingredienti)
+Libreria ZXing-js caricata via CDN (`@zxing/browser@0.1.1`, globale `ZXingBrowser`) — nessun npm install.
+UI: pulsante "📷 Scansiona" + campo EAN-13 manuale nel modal ingrediente.
+Funzioni JS: `startBarcodeScanner()`, `stopBarcodeScanner()`, `lookupByBarcode(code)` — definite prima di `initIngredienti()` in `public/app.js`.
+`closeIngForm()` chiama `stopBarcodeScanner()` per liberare la fotocamera alla chiusura del modal.
+Richiede HTTPS per accesso fotocamera da mobile — Railway lo fornisce automaticamente.
 
 ### calculateAndUpdateNutrition
 Legge `qty_base_num` degli ingredienti, calcola kcal/protein/carbs/fats, salva in **entrambi** `kcal_lui` e `kcal_lei` con lo stesso valore (base unificata).
@@ -92,6 +100,9 @@ node -e "require('./src/database')"
 
 # Test endpoint piano
 curl http://localhost:3000/api/plan?week=2025-03-10
+
+# Test endpoint barcode (Nutella)
+curl http://localhost:3000/api/ingredients/barcode/3017624010701
 
 # Forza re-seed (dopo bump SEED_VERSION): basta riavviare npm start
 ```
