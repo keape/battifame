@@ -26,3 +26,6 @@ npm-debug.log*
 # Build artifacts
 dist/
 build/
+
+# Git worktrees
+.worktrees/
