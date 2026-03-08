@@ -937,6 +937,199 @@ function initImpostazioni() {
   });
 }
 
+// ─── STATISTICHE ─────────────────────────────────────────────────────────────
+
+const TARGETS_KCAL = { lui: 1635, lei: 1686 };
+let chartWeight   = null;
+let chartCalories = null;
+
+function initStatistiche() {
+  let currentPerson = 'lui';
+  let currentFrom, currentTo;
+
+  function isoDate(d) { return d.toISOString().slice(0, 10); }
+
+  function setRange(days) {
+    const to   = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - days);
+    currentFrom = isoDate(from);
+    currentTo   = isoDate(to);
+    document.getElementById('statsFrom').value = currentFrom;
+    document.getElementById('statsTo').value   = currentTo;
+  }
+
+  // Default: ultime 4 settimane
+  setRange(28);
+  document.getElementById('weightDate').value = isoDate(new Date());
+
+  // ── Persona ──────────────────────────────────────────────────────────────
+  document.querySelectorAll('.stats-person-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.stats-person-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentPerson = btn.dataset.person;
+      loadStats();
+    });
+  });
+
+  // ── Periodo preimpostato ─────────────────────────────────────────────────
+  const customRangeEl = document.querySelector('.stats-custom-range');
+  document.querySelectorAll('.stats-period-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.stats-period-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const days = parseInt(btn.dataset.days, 10);
+      if (days === 0) {
+        customRangeEl.classList.remove('hidden');
+      } else {
+        customRangeEl.classList.add('hidden');
+        setRange(days);
+        loadStats();
+      }
+    });
+  });
+
+  // ── Periodo personalizzato ───────────────────────────────────────────────
+  document.getElementById('btnStatsApply').addEventListener('click', () => {
+    currentFrom = document.getElementById('statsFrom').value;
+    currentTo   = document.getElementById('statsTo').value;
+    if (currentFrom && currentTo) loadStats();
+  });
+
+  // ── Inserimento peso ─────────────────────────────────────────────────────
+  document.getElementById('btnAddWeight').addEventListener('click', async () => {
+    const date      = document.getElementById('weightDate').value;
+    const weight_kg = parseFloat(document.getElementById('weightValue').value);
+    if (!date || !weight_kg || weight_kg <= 0) {
+      alert('Inserisci data e peso validi.');
+      return;
+    }
+    const result = await api('/stats/weight', {
+      method: 'POST',
+      body:   JSON.stringify({ date, person: currentPerson, weight_kg }),
+    });
+    if (result.error) { alert(result.error); return; }
+    document.getElementById('weightValue').value = '';
+    loadStats();
+  });
+
+  // ── Carica dati e aggiorna grafici ────────────────────────────────────────
+  async function loadStats() {
+    const qs = `person=${currentPerson}&from=${currentFrom}&to=${currentTo}`;
+    const [weightData, calorieData] = await Promise.all([
+      api(`/stats/weight?${qs}`),
+      api(`/stats/calories?${qs}`),
+    ]);
+    if (!Array.isArray(weightData) || !Array.isArray(calorieData)) return;
+    renderWeightChart(weightData);
+    renderWeightList(weightData);
+    renderCalorieChart(calorieData);
+  }
+
+  function renderWeightChart(data) {
+    const ctx     = document.getElementById('chartWeight').getContext('2d');
+    const emptyEl = document.getElementById('chartWeightEmpty');
+    if (chartWeight) { chartWeight.destroy(); chartWeight = null; }
+    if (!data.length) {
+      emptyEl.style.display = '';
+      return;
+    }
+    emptyEl.style.display = 'none';
+    chartWeight = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels:   data.map(e => e.date),
+        datasets: [{
+          label:           'Peso (kg)',
+          data:            data.map(e => e.weight_kg),
+          borderColor:     '#388e3c',
+          backgroundColor: 'rgba(56,142,60,.1)',
+          tension:         0.3,
+          pointRadius:     4,
+          fill:            true,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { title: { display: true, text: 'kg' } },
+          x: { ticks: { maxTicksLimit: 8 } },
+        },
+      },
+    });
+  }
+
+  function renderWeightList(data) {
+    const list   = document.getElementById('weightList');
+    const recent = [...data].reverse().slice(0, 10);
+    list.innerHTML = recent.map(e =>
+      `<div class="stats-weight-item">
+         <span>${e.date}</span>
+         <strong>${e.weight_kg} kg</strong>
+         <button class="stats-del-btn" data-id="${e.id}" title="Elimina">🗑</button>
+       </div>`
+    ).join('') || '<p style="color:var(--text-muted);font-size:13px;margin:0">Nessuna misurazione registrata.</p>';
+
+    list.querySelectorAll('.stats-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await api(`/stats/weight/${btn.dataset.id}`, { method: 'DELETE' });
+        loadStats();
+      });
+    });
+  }
+
+  function renderCalorieChart(data) {
+    const ctx     = document.getElementById('chartCalories').getContext('2d');
+    const emptyEl = document.getElementById('chartCaloriesEmpty');
+    if (chartCalories) { chartCalories.destroy(); chartCalories = null; }
+    if (!data.length) {
+      emptyEl.style.display = '';
+      return;
+    }
+    emptyEl.style.display = 'none';
+    const target = TARGETS_KCAL[currentPerson];
+    chartCalories = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels:   data.map(e => e.day_date),
+        datasets: [
+          {
+            label:           'Kcal giornaliere',
+            data:            data.map(e => e.total_kcal),
+            backgroundColor: 'rgba(56,142,60,.7)',
+            borderRadius:    4,
+          },
+          {
+            label:       `Target (${target} kcal)`,
+            data:        Array(data.length).fill(target),
+            type:        'line',
+            borderColor: '#f57f17',
+            borderDash:  [6, 4],
+            borderWidth: 2,
+            pointRadius: 0,
+            fill:        false,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          y: { title: { display: true, text: 'kcal' }, beginAtZero: false },
+          x: { ticks: { maxTicksLimit: 10 } },
+        },
+      },
+    });
+  }
+
+  // Carica quando si apre il tab Statistiche (lazy: evita canvas 0x0)
+  document.querySelectorAll('[data-tab="statistiche"]').forEach(btn => {
+    btn.addEventListener('click', () => setTimeout(loadStats, 50));
+  });
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -946,6 +1139,7 @@ async function init() {
   initIngredienti();
   initSpesa();
   initImpostazioni();
+  initStatistiche();
   await Promise.all([initPiano(), loadNutritionData()]);
 }
 
