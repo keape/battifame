@@ -21,6 +21,7 @@
         <button class="tab-btn" data-tab="ingredienti">Ingredienti</button>
         <button class="tab-btn" data-tab="spesa">Lista Spesa</button>
         <button class="tab-btn" data-tab="impostazioni">Impostazioni</button>
+        <button class="tab-btn" data-tab="statistiche">Statistiche</button>
       </nav>
       <button class="menu-btn" id="menuToggle" aria-label="Menu">☰</button>
     </div>
@@ -31,6 +32,7 @@
       <button class="tab-btn" data-tab="ingredienti">🥦 Ingredienti</button>
       <button class="tab-btn" data-tab="spesa">🛒 Lista Spesa</button>
       <button class="tab-btn" data-tab="impostazioni">⚙️ Impostazioni</button>
+      <button class="tab-btn" data-tab="statistiche">📊 Statistiche</button>
     </nav>
   </header>
 
@@ -214,6 +216,62 @@
         <div class="save-feedback" id="saveFeedback"></div>
       </form>
     </section>
+
+    <!-- TAB: STATISTICHE -->
+    <section id="tab-statistiche" class="tab-content">
+      <div class="section-header">
+        <h2>Statistiche</h2>
+      </div>
+
+      <!-- Controlli: persona + periodo -->
+      <div class="stats-controls">
+        <div class="stats-person-toggle">
+          <button class="stats-person-btn active" data-person="lui">Lui</button>
+          <button class="stats-person-btn" data-person="lei">Lei</button>
+        </div>
+        <div class="stats-period-btns">
+          <button class="stats-period-btn" data-days="7">7 gg</button>
+          <button class="stats-period-btn active" data-days="28">4 sett</button>
+          <button class="stats-period-btn" data-days="90">3 mesi</button>
+          <button class="stats-period-btn" data-days="0">Personalizzato</button>
+        </div>
+        <div class="stats-custom-range hidden">
+          <input type="date" id="statsFrom">
+          <span>–</span>
+          <input type="date" id="statsTo">
+          <button class="btn btn-secondary" id="btnStatsApply">Applica</button>
+        </div>
+      </div>
+
+      <!-- Grafico peso -->
+      <div class="stats-chart-card" id="weightChartCard">
+        <h3>Peso nel tempo (kg)</h3>
+        <canvas id="chartWeight"></canvas>
+        <p id="chartWeightEmpty" class="stats-empty" style="display:none">
+          Nessuna misurazione nel periodo selezionato.
+        </p>
+      </div>
+
+      <!-- Form inserimento peso -->
+      <div class="stats-weight-card">
+        <h3>Registra peso</h3>
+        <div class="stats-add-weight">
+          <input type="date" id="weightDate">
+          <input type="number" id="weightValue" placeholder="kg" step="0.1" min="1" max="500">
+          <button class="btn btn-primary" id="btnAddWeight">+ Aggiungi</button>
+        </div>
+        <div id="weightList" class="stats-weight-list"></div>
+      </div>
+
+      <!-- Grafico calorie -->
+      <div class="stats-chart-card" id="caloriesChartCard">
+        <h3>Calorie giornaliere (kcal)</h3>
+        <canvas id="chartCalories"></canvas>
+        <p id="chartCaloriesEmpty" class="stats-empty" style="display:none">
+          Nessun pasto pianificato nel periodo selezionato.
+        </p>
+      </div>
+    </section>
   </main>
 
   <!-- MODAL: sostituzione pasto -->
@@ -363,6 +421,7 @@
   <!-- TOAST notification -->
   <div class="toast" id="toast"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.1/umd/zxing-browser.min.js"></script>
   <script src="app.js"></script>
 </body>
