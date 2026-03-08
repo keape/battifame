@@ -78,6 +78,14 @@ function initSchema() {
       key TEXT PRIMARY KEY,
       value TEXT DEFAULT ''
     );
+
+    CREATE TABLE IF NOT EXISTS weight_logs (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      date       TEXT NOT NULL,
+      person     TEXT NOT NULL CHECK (person IN ('lui', 'lei')),
+      weight_kg  REAL NOT NULL CHECK (weight_kg > 0),
+      UNIQUE(date, person)
+    );
   `);
 
   // Migrazione: aggiungi colonne numeriche a meal_ingredients se non esistono
@@ -447,6 +455,46 @@ function nextWeekStart() {
   return monday.toISOString().slice(0, 10);
 }
 
+// ─── STATS: PESO ─────────────────────────────────────────────────────────────
+
+function listWeightLogs(person, from, to) {
+  return getDb().prepare(
+    `SELECT id, date, weight_kg FROM weight_logs
+     WHERE person = ? AND date BETWEEN ? AND ?
+     ORDER BY date ASC`
+  ).all(person, from, to);
+}
+
+function upsertWeightLog(date, person, weight_kg) {
+  const db = getDb();
+  db.prepare(
+    `INSERT OR REPLACE INTO weight_logs (date, person, weight_kg) VALUES (?, ?, ?)`
+  ).run(date, person, weight_kg);
+  return db.prepare(
+    `SELECT * FROM weight_logs WHERE date = ? AND person = ?`
+  ).get(date, person);
+}
+
+function deleteWeightLog(id) {
+  getDb().prepare(`DELETE FROM weight_logs WHERE id = ?`).run(id);
+}
+
+// ─── STATS: CALORIE ───────────────────────────────────────────────────────────
+
+function getCaloriesByDay(person, from, to) {
+  const col = person === 'lui' ? 'plan_kcal_lui' : 'plan_kcal_lei';
+  return getDb().prepare(
+    `SELECT
+       DATE(week_start, '+' || day_of_week || ' days') AS day_date,
+       SUM(${col}) AS total_kcal
+     FROM weekly_plan
+     WHERE DATE(week_start, '+' || day_of_week || ' days') BETWEEN ? AND ?
+       AND ${col} IS NOT NULL AND ${col} > 0
+     GROUP BY day_date
+     ORDER BY day_date ASC`
+  ).all(from, to);
+}
+
 module.exports = {
   getDb,
   getMeals, getMealById, createMeal, updateMeal, deleteMeal,
@@ -458,4 +506,6 @@ module.exports = {
   getShoppingList,
   getSetting, getAllSettings, setSetting, setSettings,
   currentWeekStart, nextWeekStart,
+  listWeightLogs, upsertWeightLog, deleteWeightLog,
+  getCaloriesByDay,
 };
