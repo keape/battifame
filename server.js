@@ -20,6 +20,7 @@ app.use('/api/ingredients', require('./src/routes/ingredients'));
 app.use('/api/plan',        require('./src/routes/planner'));
 app.use('/api/shopping',    require('./src/routes/shopping'));
 app.use('/api/settings',    require('./src/routes/settings'));
+app.use('/api/stats',       require('./src/routes/stats'));
 
 // Helper: settimane corrente e prossima
 app.get('/api/weeks', (req, res) => {
