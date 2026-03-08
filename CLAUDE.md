@@ -16,7 +16,8 @@ src/routes/ingredients.js    — CRUD ingredienti + GET /lookup + GET /barcode/:
 src/routes/planner.js        — Piano settimanale + auto-generazione + quantità
 src/routes/shopping.js       — Lista spesa aggregata
 src/routes/settings.js       — Impostazioni (email, SMTP)
-public/index.html            — SPA 5 tab (Piano, Ricettario, Ingredienti, Spesa, Impostazioni)
+src/routes/stats.js          — Statistiche: peso + calorie (GET/POST/DELETE /api/stats/*)
+public/index.html            — SPA 6 tab (Piano, Ricettario, Ingredienti, Spesa, Impostazioni, Statistiche)
 public/style.css             — UI verde, mobile-first
 public/app.js                — Tutta la logica frontend (vanilla JS)
 ```
@@ -53,6 +54,9 @@ Stato settimana: `confirmed` (1/0), `shopping_sent` (1/0).
 ### settings
 Coppie chiave/valore: nomi, email, SMTP, `db_seed_version`.
 
+### weight_logs
+Misurazioni peso per persona. Colonne: `id`, `date` (YYYY-MM-DD), `person` ('lui'|'lei'), `weight_kg` (REAL). Vincolo UNIQUE(date, person) — INSERT OR REPLACE sovrascrive la stessa data.
+
 ## Convenzioni importanti
 
 ### Seed versioning
@@ -77,6 +81,14 @@ UI: pulsante "📷 Scansiona" + campo EAN-13 manuale nel modal ingrediente.
 Funzioni JS: `startBarcodeScanner()`, `stopBarcodeScanner()`, `lookupByBarcode(code)` — definite prima di `initIngredienti()` in `public/app.js`.
 `closeIngForm()` chiama `stopBarcodeScanner()` per liberare la fotocamera alla chiusura del modal.
 Richiede HTTPS per accesso fotocamera da mobile — Railway lo fornisce automaticamente.
+
+### Tab Statistiche (6° tab)
+Grafico peso nel tempo (line chart) + grafico calorie giornaliere (bar chart) — differenziati per Lui/Lei.
+- **Peso**: inserimento manuale → `POST /api/stats/weight` → tabella `weight_logs`. Max 1 al giorno per persona.
+- **Calorie**: lette da `weekly_plan.plan_kcal_lui/lei` — pianificato = consumato. Query SQLite con `DATE(week_start, '+' || day_of_week || ' days')` per ricostruire le date reali.
+- **Chart.js** `@4.4.0` via jsDelivr CDN (globale `Chart`) — caricato in `index.html` prima di ZXing.
+- **Target kcal** hardcoded: 1635 Lui / 1686 Lei (costante `TARGETS_KCAL` in `app.js`).
+- `initStatistiche()` in `public/app.js` — lazy load dati al click del tab (evita canvas 0×0).
 
 ### calculateAndUpdateNutrition
 Legge `qty_base_num` degli ingredienti, calcola kcal/protein/carbs/fats, salva in **entrambi** `kcal_lui` e `kcal_lei` con lo stesso valore (base unificata).
@@ -103,6 +115,10 @@ curl http://localhost:3000/api/plan?week=2025-03-10
 
 # Test endpoint barcode (Nutella)
 curl http://localhost:3000/api/ingredients/barcode/3017624010701
+
+# Test endpoint statistiche
+curl -X POST http://localhost:3000/api/stats/weight -H "Content-Type: application/json" -d '{"date":"2026-03-08","person":"lui","weight_kg":83.2}'
+curl "http://localhost:3000/api/stats/calories?person=lui&from=2026-03-01&to=2026-03-31"
 
 # Forza re-seed (dopo bump SEED_VERSION): basta riavviare npm start
 ```
