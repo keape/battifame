@@ -168,6 +168,7 @@ function renderPiano() {
     e._ingredients = e.ingredients_json ? JSON.parse(e.ingredients_json) : [];
     e._overrides_lui = e.qty_overrides_lui ? JSON.parse(e.qty_overrides_lui) : {};
     e._overrides_lei = e.qty_overrides_lei ? JSON.parse(e.qty_overrides_lei) : {};
+    e._extras = e.extras_json ? JSON.parse(e.extras_json) : [];
   }
 
   // Organizza per giorno e categoria
@@ -241,10 +242,53 @@ function renderPiano() {
     inp.addEventListener('change', () => savePlanQty(inp));
   });
 
+  // Pulsanti "+ Extra"
+  grid.querySelectorAll('.btn-add-extra').forEach(btn => {
+    btn.addEventListener('click', () => {
+      openExtraModal(parseInt(btn.dataset.planId, 10), btn.dataset.person);
+    });
+  });
+
+  // Pulsanti rimozione extra
+  grid.querySelectorAll('.extra-item-remove').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      removeExtra(parseInt(btn.dataset.extraId, 10), parseInt(btn.closest('.meal-slot').dataset.planId, 10));
+    });
+  });
+
   // Abilita/disabilita pulsante conferma
   const filled = Object.values(byDay).reduce((acc, dayObj) => acc + Object.keys(dayObj).length, 0);
   document.getElementById('btnConferma').disabled =
     (state.planData.status && state.planData.status.confirmed) || filled === 0;
+}
+
+function calcExtraKcal(extra, person) {
+  if (extra.type === 'recipe') {
+    const base = person === 'lui' ? (extra.base_kcal_lui || 0) : (extra.base_kcal_lei || 0);
+    return Math.round(base * extra.qty);
+  } else {
+    const kcalPer100 = extra.kcal_per_100 || 0;
+    const grams = extra.unit === 'pz'
+      ? extra.qty * (extra.weight_per_piece || 100)
+      : extra.qty;
+    return Math.round(kcalPer100 * grams / 100);
+  }
+}
+
+function renderExtrasHtml(extras, person) {
+  const mine = (extras || []).filter(ex => ex.person === person);
+  const items = mine.map(ex => {
+    const kcal = calcExtraKcal(ex, person);
+    return `<div class="extra-item" data-extra-id="${ex.id}">
+      <span class="extra-item-name">${escHtml(ex.name || '?')}</span>
+      ${ex.type === 'ingredient'
+        ? `<span class="extra-item-kcal">${ex.qty}${ex.unit} · ${kcal} kcal</span>`
+        : `<span class="extra-item-kcal">×${ex.qty} · ${kcal} kcal</span>`}
+      <button class="extra-item-remove" data-extra-id="${ex.id}" title="Rimuovi extra">×</button>
+    </div>`;
+  }).join('');
+  return `<div class="extras-list">${items}</div>`;
 }
 
 function renderMealRow(entry, cat, day, person) {
@@ -295,7 +339,13 @@ function renderMealRow(entry, cat, day, person) {
       <button class="btn-sm meal-swap-btn" data-cat="${cat}" data-day="${day}" data-week="${state.viewWeek}" title="Cambia pasto">↔</button>
     </div>
     ${baseKcal > 0 ? qtyInputHtml : ''}
+    ${renderExtrasHtml(entry._extras, person)}
+    <button class="btn-add-extra" data-plan-id="${entry.id}" data-person="${person}">+ Extra</button>
   </div>`;
+}
+
+function findPlanEntry(planId) {
+  return (state.planData?.entries || []).find(e => e.id === planId) || null;
 }
 
 function updateSlotKcal(changedInput) {
@@ -305,12 +355,20 @@ function updateSlotKcal(changedInput) {
 
   const baseKcal = parseFloat(changedInput.dataset.baseKcal) || 0;
   const factor = parseFloat(changedInput.value) || 0;
-  const kcal = Math.round(baseKcal * factor);
+  let kcal = Math.round(baseKcal * factor);
+
+  // Somma kcal extra
+  const planId = parseInt(slot.dataset.planId, 10);
+  const entry = findPlanEntry(planId);
+  if (entry) {
+    for (const ex of (entry._extras || []).filter(ex => ex.person === person)) {
+      kcal += calcExtraKcal(ex, person);
+    }
+  }
 
   const kcalEl = slot.querySelector(`.plan-kcal[data-person="${person}"]`);
   if (kcalEl) kcalEl.textContent = kcal > 0 ? kcal : 0;
 
-  // Aggiorna quantità ingredienti calcolate
   slot.querySelectorAll('.plan-qty-ing-val').forEach(el => {
     const base = parseFloat(el.dataset.base) || 0;
     el.textContent = Math.round(base * factor * 10) / 10;
@@ -326,7 +384,15 @@ function savePlanQty(changedInput) {
 
   const baseKcal = parseFloat(changedInput.dataset.baseKcal) || 0;
   const factor = parseFloat(changedInput.value) || 0;
-  const kcal = Math.round(baseKcal * factor);
+  let kcal = Math.round(baseKcal * factor);
+
+  // Aggiungi kcal extra per questa persona
+  const entry = findPlanEntry(planId);
+  if (entry) {
+    for (const ex of (entry._extras || []).filter(e => e.person === person)) {
+      kcal += calcExtraKcal(ex, person);
+    }
+  }
 
   const body = { plan_id: planId };
   if (person === 'lui') { body.qty_overrides_lui = { _factor: factor }; body.plan_kcal_lui = kcal; }
@@ -411,6 +477,240 @@ function initSwapModal() {
       document.getElementById('modalOverlay').style.display = 'none';
     }
   });
+}
+
+// ─── EXTRA MODAL ──────────────────────────────────────────────────────────────
+
+const extraModalState = {
+  planId: null,
+  person: 'lui',
+  type: 'ingredient',
+  refId: null,
+};
+
+let _mealsCache = null;
+let _ingredientsCache = null;
+
+async function ensureExtraSearchCache() {
+  if (!_ingredientsCache) {
+    _ingredientsCache = await api('/ingredients');
+  }
+  if (!_mealsCache) {
+    const cats = ['colazione','spuntino','pranzo','merenda','cena'];
+    _mealsCache = [];
+    for (const cat of cats) {
+      const meals = await api(`/meals?category=${cat}`);
+      if (Array.isArray(meals)) _mealsCache.push(...meals);
+    }
+  }
+}
+
+function openExtraModal(planId, person) {
+  extraModalState.planId = planId;
+  extraModalState.person = person;
+  extraModalState.refId = null;
+  extraModalState.type = 'ingredient';
+
+  document.querySelectorAll('#extraPersonGroup button').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === person);
+  });
+  document.querySelectorAll('#extraTypeGroup button').forEach(b => {
+    b.classList.toggle('active', b.dataset.val === 'ingredient');
+  });
+  document.getElementById('extraSearchInput').value = '';
+  document.getElementById('extraSearchResults').innerHTML = '';
+  document.getElementById('extraSearchResults').classList.remove('open');
+  document.getElementById('extraQtyInput').value = 100;
+  document.getElementById('extraUnitSelect').value = 'g';
+  document.getElementById('extraUnitSelect').style.display = '';
+  document.getElementById('extraQtyLabel').textContent = 'Quantità';
+  document.getElementById('extraModalConfirm').disabled = true;
+  document.getElementById('extraSearchInput').placeholder = 'Cerca alimento...';
+
+  document.getElementById('extraModalOverlay').classList.add('open');
+}
+
+function closeExtraModal() {
+  document.getElementById('extraModalOverlay').classList.remove('open');
+  document.getElementById('extraSearchResults').classList.remove('open');
+}
+
+function updateExtraSearchResults(query) {
+  const resultsEl = document.getElementById('extraSearchResults');
+  if (!query.trim()) { resultsEl.classList.remove('open'); return; }
+
+  const q = query.toLowerCase();
+  let items = [];
+  if (extraModalState.type === 'ingredient') {
+    items = (_ingredientsCache || [])
+      .filter(i => i.name.toLowerCase().includes(q))
+      .slice(0, 8)
+      .map(i => ({ id: i.id, name: i.name, meta: `${i.kcal_per_100} kcal/100g` }));
+  } else {
+    items = (_mealsCache || [])
+      .filter(m => m.name.toLowerCase().includes(q))
+      .slice(0, 8)
+      .map(m => ({ id: m.id, name: m.name, meta: `${m.kcal_lui || 0} kcal (base)` }));
+  }
+
+  if (!items.length) { resultsEl.classList.remove('open'); return; }
+
+  resultsEl.innerHTML = items.map(item => `
+    <div class="extra-search-item" data-id="${item.id}" data-name="${escHtml(item.name)}">
+      <div class="extra-search-item-name">${escHtml(item.name)}</div>
+      <div class="extra-search-item-meta">${escHtml(item.meta)}</div>
+    </div>
+  `).join('');
+  resultsEl.classList.add('open');
+
+  resultsEl.querySelectorAll('.extra-search-item').forEach(el => {
+    el.addEventListener('click', () => {
+      extraModalState.refId = parseInt(el.dataset.id, 10);
+      document.getElementById('extraSearchInput').value = el.dataset.name;
+      resultsEl.classList.remove('open');
+      document.getElementById('extraModalConfirm').disabled = false;
+
+      if (extraModalState.type === 'recipe') {
+        document.getElementById('extraQtyLabel').textContent = 'Porzione (moltiplicatore)';
+        document.getElementById('extraUnitSelect').style.display = 'none';
+        document.getElementById('extraQtyInput').value = 1;
+        document.getElementById('extraQtyInput').step = '0.1';
+        document.getElementById('extraQtyInput').min = '0.1';
+      } else {
+        document.getElementById('extraQtyLabel').textContent = 'Quantità';
+        document.getElementById('extraUnitSelect').style.display = '';
+        document.getElementById('extraQtyInput').value = 100;
+      }
+    });
+  });
+}
+
+async function confirmAddExtra() {
+  const { planId, person, type, refId } = extraModalState;
+  if (!refId) return;
+  const qty = parseFloat(document.getElementById('extraQtyInput').value) || 1;
+  const unit = type === 'recipe' ? 'x' : document.getElementById('extraUnitSelect').value;
+
+  const extra = await api('/plan/extras', {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId, type, ref_id: refId, person, qty, unit }),
+  });
+
+  const entry = findPlanEntry(planId);
+  if (entry) {
+    entry._extras = entry._extras || [];
+    entry._extras.push(extra);
+  }
+
+  closeExtraModal();
+  refreshSlotExtras(planId);
+  showToast('Extra aggiunto!');
+}
+
+async function removeExtra(extraId, planId) {
+  await api(`/plan/extras/${extraId}`, { method: 'DELETE' });
+
+  const entry = findPlanEntry(planId);
+  if (entry) {
+    entry._extras = (entry._extras || []).filter(ex => ex.id !== extraId);
+  }
+
+  refreshSlotExtras(planId);
+  showToast('Extra rimosso');
+}
+
+function refreshSlotExtras(planId) {
+  const entry = findPlanEntry(planId);
+  if (!entry) return;
+
+  document.querySelectorAll(`.meal-slot[data-plan-id="${planId}"]`).forEach(slot => {
+    const addBtn = slot.querySelector('.btn-add-extra');
+    if (!addBtn) return;
+    const person = addBtn.dataset.person;
+
+    // Aggiorna lista extra
+    const existingList = slot.querySelector('.extras-list');
+    const newListHtml = renderExtrasHtml(entry._extras, person);
+    if (existingList) {
+      existingList.outerHTML = newListHtml;
+    } else {
+      addBtn.insertAdjacentHTML('beforebegin', newListHtml);
+    }
+
+    // Ricalcola e salva kcal slot
+    const qtyInput = slot.querySelector('.plan-qty-input');
+    if (qtyInput) {
+      updateSlotKcal(qtyInput);
+      savePlanQty(qtyInput);
+    } else {
+      // Slot senza ricetta con kcal base (slot vuoto o colazione senza valori)
+      let kcal = 0;
+      for (const ex of (entry._extras || []).filter(e => e.person === person)) {
+        kcal += calcExtraKcal(ex, person);
+      }
+      const kcalEl = slot.querySelector(`.plan-kcal[data-person="${person}"]`);
+      if (kcalEl) kcalEl.textContent = kcal;
+
+      const body = { plan_id: planId };
+      if (person === 'lui') body.plan_kcal_lui = kcal;
+      else body.plan_kcal_lei = kcal;
+      api('/plan/quantities', { method: 'PUT', body: JSON.stringify(body) });
+
+      const dayCard = slot.closest('.day-card');
+      if (dayCard) updateDayKcalHeader(dayCard);
+    }
+
+    // Re-wire remove buttons on the updated list
+    slot.querySelectorAll('.extra-item-remove').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        removeExtra(parseInt(btn.dataset.extraId, 10), planId);
+      });
+    });
+  });
+}
+
+function initExtraModal() {
+  document.getElementById('extraPersonGroup').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-val]');
+    if (!btn) return;
+    extraModalState.person = btn.dataset.val;
+    document.querySelectorAll('#extraPersonGroup button').forEach(b =>
+      b.classList.toggle('active', b.dataset.val === extraModalState.person));
+  });
+
+  document.getElementById('extraTypeGroup').addEventListener('click', async e => {
+    const btn = e.target.closest('button[data-val]');
+    if (!btn) return;
+    extraModalState.type = btn.dataset.val;
+    extraModalState.refId = null;
+    document.querySelectorAll('#extraTypeGroup button').forEach(b =>
+      b.classList.toggle('active', b.dataset.val === extraModalState.type));
+    document.getElementById('extraSearchInput').value = '';
+    document.getElementById('extraSearchResults').classList.remove('open');
+    document.getElementById('extraModalConfirm').disabled = true;
+    document.getElementById('extraSearchInput').placeholder =
+      extraModalState.type === 'ingredient' ? 'Cerca alimento...' : 'Cerca ricetta...';
+    await ensureExtraSearchCache();
+  });
+
+  document.getElementById('extraSearchInput').addEventListener('input', async e => {
+    await ensureExtraSearchCache();
+    updateExtraSearchResults(e.target.value);
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.extra-modal')) {
+      document.getElementById('extraSearchResults')?.classList.remove('open');
+    }
+  });
+
+  document.getElementById('extraModalCancel').addEventListener('click', closeExtraModal);
+  document.getElementById('extraModalOverlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('extraModalOverlay')) closeExtraModal();
+  });
+
+  document.getElementById('extraModalConfirm').addEventListener('click', confirmAddExtra);
 }
 
 // ─── TAB: RICETTARIO ──────────────────────────────────────────────────────────
@@ -1135,6 +1435,7 @@ function initStatistiche() {
 async function init() {
   initTabs();
   initSwapModal();
+  initExtraModal();
   initRicettario();
   initIngredienti();
   initSpesa();
