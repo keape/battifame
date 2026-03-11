@@ -77,6 +77,39 @@ router.put('/quantities', (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/plan/extras?plan_id=X
+router.get('/extras', (req, res) => {
+  const planId = parseInt(req.query.plan_id, 10);
+  if (!planId) return res.status(400).json({ error: 'plan_id richiesto' });
+  const extras = db.getPlanExtras(planId);
+  res.json(extras);
+});
+
+// POST /api/plan/extras
+router.post('/extras', (req, res) => {
+  const { plan_id, type, ref_id, person, qty, unit } = req.body;
+  if (!plan_id || !type || !ref_id || !person || qty == null) {
+    return res.status(400).json({ error: 'Campi obbligatori: plan_id, type, ref_id, person, qty' });
+  }
+  if (!['recipe', 'ingredient'].includes(type)) {
+    return res.status(400).json({ error: 'type deve essere recipe o ingredient' });
+  }
+  if (!['lui', 'lei'].includes(person)) {
+    return res.status(400).json({ error: 'person deve essere lui o lei' });
+  }
+  const extra = db.addPlanExtra(
+    parseInt(plan_id, 10), type, parseInt(ref_id, 10),
+    person, parseFloat(qty), unit || 'g'
+  );
+  res.status(201).json(extra);
+});
+
+// DELETE /api/plan/extras/:id
+router.delete('/extras/:id', (req, res) => {
+  db.deletePlanExtra(parseInt(req.params.id, 10));
+  res.json({ ok: true });
+});
+
 // PUT /api/plan/:id  — sostituisci un singolo pasto
 router.put('/:id', (req, res) => {
   const { meal_option_id } = req.body;
