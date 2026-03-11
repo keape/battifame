@@ -94,7 +94,8 @@ function initSchema() {
       ref_id   INTEGER NOT NULL,
       person   TEXT NOT NULL CHECK(person IN ('lui', 'lei')),
       qty      REAL NOT NULL DEFAULT 1.0,
-      unit     TEXT DEFAULT 'g'
+      unit     TEXT NOT NULL DEFAULT 'g',
+      UNIQUE(plan_id, type, ref_id, person)
     );
   `);
 
@@ -123,6 +124,34 @@ function initSchema() {
   }
   if (!wpCols.includes('plan_kcal_lei')) {
     db.exec("ALTER TABLE weekly_plan ADD COLUMN plan_kcal_lei INTEGER DEFAULT NULL");
+  }
+
+  // Migrazione plan_extras: unit NOT NULL + UNIQUE(plan_id, type, ref_id, person)
+  const peColInfo = db.prepare("PRAGMA table_info(plan_extras)").all();
+  const peUnitCol = peColInfo.find(c => c.name === 'unit');
+  if (peUnitCol && peUnitCol.notnull === 0) {
+    // Ricrea la tabella con il vincolo NOT NULL su unit
+    db.exec(`
+      BEGIN;
+      ALTER TABLE plan_extras RENAME TO plan_extras_old;
+      CREATE TABLE plan_extras (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        plan_id  INTEGER NOT NULL REFERENCES weekly_plan(id) ON DELETE CASCADE,
+        type     TEXT NOT NULL CHECK(type IN ('recipe', 'ingredient')),
+        ref_id   INTEGER NOT NULL,
+        person   TEXT NOT NULL CHECK(person IN ('lui', 'lei')),
+        qty      REAL NOT NULL DEFAULT 1.0,
+        unit     TEXT NOT NULL DEFAULT 'g',
+        UNIQUE(plan_id, type, ref_id, person)
+      );
+      INSERT OR IGNORE INTO plan_extras SELECT id, plan_id, type, ref_id, person, qty, COALESCE(unit, 'g') FROM plan_extras_old;
+      DROP TABLE plan_extras_old;
+      COMMIT;
+    `);
+    console.log('[DB] Migrazione plan_extras: unit NOT NULL + UNIQUE constraint applicati.');
+  } else {
+    // Assicura che l'indice UNIQUE esista anche se la tabella era già corretta
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_plan_extras ON plan_extras(plan_id, type, ref_id, person)");
   }
 
   // Seed ingredient_nutrition se vuoto
