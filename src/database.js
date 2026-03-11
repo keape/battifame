@@ -359,7 +359,37 @@ function getWeekPlan(weekStart) {
                'ingredient', mi.ingredient,
                'qty_base_num', mi.qty_base_num,
                'unit', mi.unit
-           )) FROM meal_ingredients mi WHERE mi.meal_option_id = wp.meal_option_id) AS ingredients_json
+           )) FILTER (WHERE mi.id IS NOT NULL)
+            FROM meal_ingredients mi WHERE mi.meal_option_id = wp.meal_option_id) AS ingredients_json,
+           (SELECT json_group_array(json_object(
+               'id', pe.id,
+               'type', pe.type,
+               'ref_id', pe.ref_id,
+               'person', pe.person,
+               'qty', pe.qty,
+               'unit', pe.unit,
+               'name', CASE pe.type
+                 WHEN 'recipe'     THEN (SELECT name FROM meal_options        WHERE id = pe.ref_id)
+                 WHEN 'ingredient' THEN (SELECT name FROM ingredient_nutrition WHERE id = pe.ref_id)
+               END,
+               'kcal_per_100', CASE pe.type
+                 WHEN 'ingredient' THEN (SELECT kcal_per_100    FROM ingredient_nutrition WHERE id = pe.ref_id)
+                 ELSE NULL
+               END,
+               'weight_per_piece', CASE pe.type
+                 WHEN 'ingredient' THEN (SELECT weight_per_piece FROM ingredient_nutrition WHERE id = pe.ref_id)
+                 ELSE NULL
+               END,
+               'base_kcal_lui', CASE pe.type
+                 WHEN 'recipe' THEN (SELECT kcal_lui FROM meal_options WHERE id = pe.ref_id)
+                 ELSE NULL
+               END,
+               'base_kcal_lei', CASE pe.type
+                 WHEN 'recipe' THEN (SELECT kcal_lei FROM meal_options WHERE id = pe.ref_id)
+                 ELSE NULL
+               END
+           )) FILTER (WHERE pe.id IS NOT NULL)
+            FROM plan_extras pe WHERE pe.plan_id = wp.id) AS extras_json
     FROM weekly_plan wp
     LEFT JOIN meal_options mo ON mo.id = wp.meal_option_id
     WHERE wp.week_start = ?
