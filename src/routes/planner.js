@@ -106,7 +106,8 @@ router.post('/extras', (req, res) => {
 
 // DELETE /api/plan/extras/:id
 router.delete('/extras/:id', (req, res) => {
-  db.deletePlanExtra(parseInt(req.params.id, 10));
+  const result = db.deletePlanExtra(parseInt(req.params.id, 10));
+  if (result.changes === 0) return res.status(404).json({ error: 'Extra non trovato' });
   res.json({ ok: true });
 });
 
