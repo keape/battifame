@@ -189,13 +189,21 @@ function renderPiano() {
     for (const cat of CAT_LUI) {
       if (dayEntries[cat]) {
         const e = dayEntries[cat];
-        kcalLui += e.plan_kcal_lui ?? e.base_kcal_lui ?? 0;
+        let slotKcal = e.plan_kcal_lui ?? e.base_kcal_lui ?? 0;
+        for (const ex of (e._extras || []).filter(ex => ex.person === 'lui')) {
+          slotKcal += calcExtraKcal(ex, 'lui');
+        }
+        kcalLui += slotKcal;
       }
     }
     for (const cat of CAT_LEI) {
       if (dayEntries[cat]) {
         const e = dayEntries[cat];
-        kcalLei += e.plan_kcal_lei ?? e.base_kcal_lei ?? 0;
+        let slotKcal = e.plan_kcal_lei ?? e.base_kcal_lei ?? 0;
+        for (const ex of (e._extras || []).filter(ex => ex.person === 'lei')) {
+          slotKcal += calcExtraKcal(ex, 'lei');
+        }
+        kcalLei += slotKcal;
       }
     }
 
@@ -496,12 +504,8 @@ async function ensureExtraSearchCache() {
     _ingredientsCache = await api('/ingredients');
   }
   if (!_mealsCache) {
-    const cats = ['colazione','spuntino','pranzo','merenda','cena'];
-    _mealsCache = [];
-    for (const cat of cats) {
-      const meals = await api(`/meals?category=${cat}`);
-      if (Array.isArray(meals)) _mealsCache.push(...meals);
-    }
+    const all = await api('/meals');
+    _mealsCache = Array.isArray(all) ? all : [];
   }
 }
 
@@ -595,6 +599,7 @@ async function confirmAddExtra() {
     method: 'POST',
     body: JSON.stringify({ plan_id: planId, type, ref_id: refId, person, qty, unit }),
   });
+  if (extra.error) { alert(extra.error); return; }
 
   const entry = findPlanEntry(planId);
   if (entry) {
@@ -608,7 +613,8 @@ async function confirmAddExtra() {
 }
 
 async function removeExtra(extraId, planId) {
-  await api(`/plan/extras/${extraId}`, { method: 'DELETE' });
+  const result = await api(`/plan/extras/${extraId}`, { method: 'DELETE' });
+  if (result && result.error) { alert(result.error); return; }
 
   const entry = findPlanEntry(planId);
   if (entry) {
