@@ -441,10 +441,11 @@ function deletePlanEntry(id) {
 // ─── PLAN EXTRAS ─────────────────────────────────────────────────────────────
 
 function addPlanExtra(planId, type, refId, person, qty, unit) {
-  const r = getDb().prepare(
+  const d = getDb();
+  const r = d.prepare(
     'INSERT INTO plan_extras (plan_id, type, ref_id, person, qty, unit) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(planId, type, refId, person, qty, unit || 'g');
-  return getDb().prepare('SELECT * FROM plan_extras WHERE id = ?').get(r.lastInsertRowid);
+  return d.prepare('SELECT * FROM plan_extras WHERE id = ?').get(r.lastInsertRowid);
 }
 
 function deletePlanExtra(id) {
@@ -540,6 +541,7 @@ function getShoppingList(weekStart) {
       JOIN plan_extras pe2 ON pe2.plan_id = wp3.id AND pe2.type = 'ingredient'
       JOIN ingredient_nutrition ing ON ing.id = pe2.ref_id
       WHERE wp3.week_start = ?
+        AND pe2.qty > 0
     )
     GROUP BY ingredient, unit
     ORDER BY ingredient
