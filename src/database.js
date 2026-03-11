@@ -512,15 +512,38 @@ function markShoppingSent(weekStart) {
 
 function getShoppingList(weekStart) {
   return getDb().prepare(`
-    SELECT mi.ingredient, mi.unit
-    FROM weekly_plan wp
-    JOIN meal_options mo ON mo.id = wp.meal_option_id
-    JOIN meal_ingredients mi ON mi.meal_option_id = mo.id
-    WHERE wp.week_start = ?
-      AND mi.qty_base_num > 0
-    GROUP BY mi.ingredient, mi.unit
-    ORDER BY mi.ingredient
-  `).all(weekStart);
+    SELECT ingredient, unit
+    FROM (
+      -- Ingredienti delle ricette principali
+      SELECT mi.ingredient, mi.unit
+      FROM weekly_plan wp
+      JOIN meal_options mo ON mo.id = wp.meal_option_id
+      JOIN meal_ingredients mi ON mi.meal_option_id = mo.id
+      WHERE wp.week_start = ?
+        AND mi.qty_base_num > 0
+
+      UNION
+
+      -- Ingredienti di ricette extra (type='recipe')
+      SELECT mi2.ingredient, mi2.unit
+      FROM weekly_plan wp2
+      JOIN plan_extras pe ON pe.plan_id = wp2.id AND pe.type = 'recipe'
+      JOIN meal_ingredients mi2 ON mi2.meal_option_id = pe.ref_id
+      WHERE wp2.week_start = ?
+        AND mi2.qty_base_num > 0
+
+      UNION
+
+      -- Alimenti singoli extra (type='ingredient')
+      SELECT ing.name AS ingredient, pe2.unit
+      FROM weekly_plan wp3
+      JOIN plan_extras pe2 ON pe2.plan_id = wp3.id AND pe2.type = 'ingredient'
+      JOIN ingredient_nutrition ing ON ing.id = pe2.ref_id
+      WHERE wp3.week_start = ?
+    )
+    GROUP BY ingredient, unit
+    ORDER BY ingredient
+  `).all(weekStart, weekStart, weekStart);
 }
 
 // ─── SETTINGS ────────────────────────────────────────────────────────────────
