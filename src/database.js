@@ -86,6 +86,16 @@ function initSchema() {
       weight_kg  REAL NOT NULL CHECK (weight_kg > 0),
       UNIQUE(date, person)
     );
+
+    CREATE TABLE IF NOT EXISTS plan_extras (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id  INTEGER NOT NULL REFERENCES weekly_plan(id) ON DELETE CASCADE,
+      type     TEXT NOT NULL CHECK(type IN ('recipe', 'ingredient')),
+      ref_id   INTEGER NOT NULL,
+      person   TEXT NOT NULL CHECK(person IN ('lui', 'lei')),
+      qty      REAL NOT NULL DEFAULT 1.0,
+      unit     TEXT DEFAULT 'g'
+    );
   `);
 
   // Migrazione: aggiungi colonne numeriche a meal_ingredients se non esistono
