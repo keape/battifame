@@ -47,7 +47,7 @@ try {
 
 startScheduler();
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🥗 BattiFame è in esecuzione!`);
   console.log(`   Apri il browser su: http://localhost:${PORT}\n`);
 });
