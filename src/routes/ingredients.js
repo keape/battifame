@@ -9,32 +9,37 @@ router.get('/', (req, res) => {
   res.json(db.listIngredients());
 });
 
-// GET /api/ingredients/lookup?q=nome — cerca valori nutrizionali su Open Food Facts (gratuito, no API key)
+// GET /api/ingredients/lookup?q=nome — cerca valori nutrizionali su USDA FoodData Central (gratuito, no API key)
 router.get('/lookup', async (req, res) => {
   const q = (req.query.q || '').trim();
   if (!q) return res.status(400).json({ error: 'Parametro q obbligatorio' });
 
-  const url = 'https://world.openfoodfacts.org/cgi/search.pl' +
-    `?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process` +
-    '&json=1&fields=product_name,nutriments&lc=it&page_size=5';
+  const USDA_KEY = process.env.USDA_API_KEY || 'DEMO_KEY';
+  const url = 'https://api.nal.usda.gov/fdc/v1/foods/search' +
+    `?query=${encodeURIComponent(q)}&api_key=${USDA_KEY}` +
+    '&pageSize=10&dataType=SR%20Legacy,Foundation,Branded';
 
   try {
     const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
     const data = await resp.json();
-    const products = data.products || [];
+    const foods = data.foods || [];
 
-    for (const p of products) {
-      const n = p.nutriments || {};
-      if (n['energy-kcal_100g'] != null) {
+    for (const food of foods) {
+      const n = {};
+      for (const fn of (food.foodNutrients || [])) {
+        n[fn.nutrientNumber] = fn.value;
+      }
+      // 208=kcal, 203=proteine, 205=carboidrati, 204=grassi (per 100g)
+      if (n['208'] != null) {
         return res.json({
-          kcal_per_100:    Math.round(n['energy-kcal_100g']   || 0),
-          protein_per_100: Math.round((n['proteins_100g']      || 0) * 10) / 10,
-          carbs_per_100:   Math.round((n['carbohydrates_100g'] || 0) * 10) / 10,
-          fats_per_100:    Math.round((n['fat_100g']           || 0) * 10) / 10,
+          kcal_per_100:    Math.round(n['208'] || 0),
+          protein_per_100: Math.round((n['203'] || 0) * 10) / 10,
+          carbs_per_100:   Math.round((n['205'] || 0) * 10) / 10,
+          fats_per_100:    Math.round((n['204'] || 0) * 10) / 10,
         });
       }
     }
-    res.status(404).json({ error: `Nessun dato trovato per "${q}". Inserisci i valori manualmente.` });
+    res.status(404).json({ error: `Nessun dato trovato per "${q}". Prova in inglese (es. "chicken" invece di "pollo") o inserisci i valori manualmente.` });
   } catch (_) {
     res.status(503).json({ error: 'Servizio non raggiungibile. Controlla la connessione internet.' });
   }
