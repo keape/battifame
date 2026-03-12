@@ -445,7 +445,31 @@ function addPlanExtra(planId, type, refId, person, qty, unit) {
   const r = d.prepare(
     'INSERT INTO plan_extras (plan_id, type, ref_id, person, qty, unit) VALUES (?, ?, ?, ?, ?, ?)'
   ).run(planId, type, refId, person, qty, unit || 'g');
-  return d.prepare('SELECT * FROM plan_extras WHERE id = ?').get(r.lastInsertRowid);
+  return d.prepare(`
+    SELECT pe.*,
+      CASE pe.type
+        WHEN 'recipe'     THEN (SELECT name FROM meal_options        WHERE id = pe.ref_id)
+        WHEN 'ingredient' THEN (SELECT name FROM ingredient_nutrition WHERE id = pe.ref_id)
+      END AS name,
+      CASE pe.type
+        WHEN 'recipe' THEN (SELECT kcal_lui FROM meal_options WHERE id = pe.ref_id)
+        ELSE NULL
+      END AS base_kcal_lui,
+      CASE pe.type
+        WHEN 'recipe' THEN (SELECT kcal_lei FROM meal_options WHERE id = pe.ref_id)
+        ELSE NULL
+      END AS base_kcal_lei,
+      CASE pe.type
+        WHEN 'ingredient' THEN (SELECT kcal_per_100    FROM ingredient_nutrition WHERE id = pe.ref_id)
+        ELSE NULL
+      END AS kcal_per_100,
+      CASE pe.type
+        WHEN 'ingredient' THEN (SELECT weight_per_piece FROM ingredient_nutrition WHERE id = pe.ref_id)
+        ELSE NULL
+      END AS weight_per_piece
+    FROM plan_extras pe
+    WHERE pe.id = ?
+  `).get(r.lastInsertRowid);
 }
 
 function deletePlanExtra(id) {

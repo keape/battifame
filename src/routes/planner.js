@@ -97,10 +97,18 @@ router.post('/extras', (req, res) => {
   if (!['lui', 'lei'].includes(person)) {
     return res.status(400).json({ error: 'person deve essere lui o lei' });
   }
-  const extra = db.addPlanExtra(
-    parseInt(plan_id, 10), type, parseInt(ref_id, 10),
-    person, parseFloat(qty), unit || 'g'
-  );
+  let extra;
+  try {
+    extra = db.addPlanExtra(
+      parseInt(plan_id, 10), type, parseInt(ref_id, 10),
+      person, parseFloat(qty), unit || 'g'
+    );
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      return res.status(409).json({ error: 'Extra già presente per questa persona' });
+    }
+    throw err;
+  }
   res.status(201).json(extra);
 });
 

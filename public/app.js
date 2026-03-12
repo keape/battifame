@@ -593,7 +593,7 @@ async function confirmAddExtra() {
   const { planId, person, type, refId } = extraModalState;
   if (!refId) return;
   const qty = parseFloat(document.getElementById('extraQtyInput').value) || 1;
-  const unit = type === 'recipe' ? 'x' : document.getElementById('extraUnitSelect').value;
+  const unit = type === 'recipe' ? 'g' : document.getElementById('extraUnitSelect').value;
 
   const extra = await api('/plan/extras', {
     method: 'POST',
